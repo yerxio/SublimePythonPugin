@@ -72,6 +72,7 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
         new_view = self.view.window().new_file()
         new_view.set_name("🐍 Python 字典对比结果")
         new_view.set_syntax_file("Packages/Diff/Diff.sublime-syntax")
+        new_view.set_scratch(True)  # 关键设置：标记为临时文件，关闭时不提示保存
         
         # 添加标题和分隔线
         header = "="*50 + "\nPython 字典对比报告\n" + "="*50 + "\n\n"
