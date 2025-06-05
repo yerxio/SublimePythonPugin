@@ -4,23 +4,41 @@ import ast
 
 class ComparePythonDictsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        regions = self.view.sel()
-        if len(regions) != 2:
-            sublime.error_message("请选中两个 Python 字典进行对比！")
+        # 获取所有窗口的选中内容
+        dict_contents = self.get_selections_from_all_views()
+        
+        if len(dict_contents) != 2:
+            sublime.error_message("请在任意文件中选中两个Python字典进行对比！")
             return
 
-        dict1_str = self.view.substr(regions[0])
-        dict2_str = self.view.substr(regions[1])
+        dict1_str, dict2_str = dict_contents[0], dict_contents[1]
 
         try:
             dict1 = ast.literal_eval(dict1_str)
             dict2 = ast.literal_eval(dict2_str)
         except (SyntaxError, ValueError) as e:
-            sublime.error_message(f"解析字典失败：{e}")
+            sublime.error_message(f"解析字典失败：{e}\n请确保选择的是有效的Python字典")
             return
 
         diff = self.compare_dicts(dict1, dict2)
         self.show_diff(diff)
+
+    def get_selections_from_all_views(self):
+        """从所有可见视图中获取选中内容"""
+        dict_contents = []
+        window = sublime.active_window()
+        
+        # 获取所有可见视图
+        for view in window.views():
+            selections = [view.substr(region) for region in view.sel() if not region.empty()]
+            for content in selections:
+                # 简单验证是否是字典结构
+                if "{" in content and "}" in content:
+                    dict_contents.append(content.strip())
+                    if len(dict_contents) == 2:  # 只需要两个字典
+                        return dict_contents
+        
+        return dict_contents
 
     def compare_dicts(self, dict1, dict2, path=""):
         """递归对比字典，区分不同内容并最终显示"""
@@ -68,24 +86,24 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
             sublime.message_dialog("两个字典内容完全一致！")
             return
 
-        # 创建新窗口
+        # 创建新窗口并设置为临时文件
         new_view = self.view.window().new_file()
-        new_view.set_name("🐍 Python 字典对比结果")
+        new_view.set_name("🐍 Python 字典对比结果 (跨文件)")
         new_view.set_syntax_file("Packages/Diff/Diff.sublime-syntax")
-        new_view.set_scratch(True)  # 关键设置：标记为临时文件，关闭时不提示保存
+        new_view.set_scratch(True)  # 标记为临时文件，关闭时不提示保存
         
         # 添加标题和分隔线
-        header = "="*50 + "\nPython 字典对比报告\n" + "="*50 + "\n\n"
+        header = "="*50 + "\nPython 字典对比报告 (跨文件)\n" + "="*50 + "\n\n"
         new_view.run_command("append", {"characters": header})
 
         # 仅字典1存在的键值对
         if diff["only_in_dict1"]:
-            new_view.run_command("append", {"characters": "\n\n==== 仅字典1存在 ====\n"})
+            new_view.run_command("append", {"characters": "\n\n==== 仅第一个字典存在 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["only_in_dict1"])})
         
         # 仅字典2存在的键值对
         if diff["only_in_dict2"]:
-            new_view.run_command("append", {"characters": "\n\n==== 仅字典2存在 ====\n"})
+            new_view.run_command("append", {"characters": "\n\n==== 仅第二个字典存在 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["only_in_dict2"])})
         
         # 修改的键值对
