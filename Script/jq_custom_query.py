@@ -5,6 +5,8 @@ import threading
 import os
 
 class JqCustomQueryCommand(sublime_plugin.TextCommand):
+    last_jq_query = "."  # 类变量，用于存储上一次的查询
+
     def run(self, edit):
         current_view = self.view
         if not current_view:
@@ -24,7 +26,7 @@ class JqCustomQueryCommand(sublime_plugin.TextCommand):
 
         current_window.show_input_panel(
             "输入 jq 查询语句:",
-            ".",  # 默认查询语句
+            JqCustomQueryCommand.last_jq_query,  # 使用上一次的查询作为默认值
             lambda query_str: self.on_done_input(json_content, query_str),
             None,
             None
@@ -34,6 +36,8 @@ class JqCustomQueryCommand(sublime_plugin.TextCommand):
         if not query_str:
             sublime.status_message("jq 查询: 查询语句不能为空。")
             return
+        
+        JqCustomQueryCommand.last_jq_query = query_str # 保存当前查询
 
         # 注意: jq_path 默认设置为 "jq"。
         # 如果 "jq" 不在您的系统PATH中, 您可能需要修改 JqProcessThread 中的 self.jq_path
