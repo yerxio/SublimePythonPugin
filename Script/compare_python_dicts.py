@@ -122,3 +122,12 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
         
         # 滚动到顶部
         new_view.show(0)
+'''
+	{
+		"keys": ["ctrl+shift+d"],
+		"command": "compare_python_dicts",
+		"context": [
+			{ "key": "selector", "operator": "equal", "operand": "source.python" }
+		]
+	}	
+'''
