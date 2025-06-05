@@ -95,6 +95,9 @@ class JqProcessThread(threading.Thread):
         output_view = self.window.new_file()
         output_view.set_scratch(True) # 设置为临时文件，关闭时不提示保存
 
+        header = f"===语句===\n{self.query_str}\n=========\n\n"
+        content_with_header = header + content
+
         if is_error:
             output_view.set_name("jq 执行错误日志")
             output_view.set_syntax_file("Packages/Text/Plain text.tmLanguage")
@@ -104,7 +107,7 @@ class JqProcessThread(threading.Thread):
             # 如果 jq 使用 -r 等参数输出了非 JSON 文本，语法可能不完全匹配，但 JSON 是个好的默认值
             output_view.set_syntax_file("Packages/JSON/JSON.tmLanguage") 
         
-        output_view.run_command('append', {'characters': content})
+        output_view.run_command('append', {'characters': content_with_header})
         self.window.focus_view(output_view)
 
 
