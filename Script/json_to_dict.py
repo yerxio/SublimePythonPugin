@@ -96,6 +96,6 @@ class JsonToDictCommand(sublime_plugin.TextCommand):
 # 并添加以下内容（根据你的操作系统选择对应的文件）:
 """
 [
-    { "keys": ["ctrl+alt+j"], "command": "json_to_dict" }
+    { "keys": ["ctrl+q"], "command": "json_to_dict" }
 ]
 """
