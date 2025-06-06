@@ -114,13 +114,20 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
             query_pairs = urllib.parse.parse_qs(parsed_url.query)
             params_dict = {k: v[0] if len(v) == 1 else v for k, v in query_pairs.items()}
 
-        proxy_code = """proxies = {
-    "http": "http://127.0.0.1:7890",
-    "https": "http://127.0.0.1:7890"
-}"""
+        proxy_code = 'proxies = {\n' \
+        +'   "http": "http://127.0.0.1:7890",\n' \
+        +'   "https": "http://127.0.0.1:7890"\n' \
+        +'}\n'
 
         headers_code = f"headers = {json.dumps(headers, indent=4)}" if headers else ""
-        params_code = f"params = {json.dumps(params_dict, indent=4)}" if params_dict else ""
+        if params_dict:
+            params_code = 'params = {\n'
+            for key, value in params_dict.items():
+                params_code += f'    \"{key}\": \'{value}\',\n'
+            params_code += '}'
+        else:
+            params_code = ''
+        # params_code += f"params = {json.dumps(params_dict, indent=4)}" if params_dict else ""
         cookies_code = f"cookies = {json.dumps(cookies_dict, indent=4)}" if cookies_dict else ""
 
         if data:
