@@ -190,6 +190,7 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                         data_code = f"data = {json.dumps(json_data, indent=4)}\n"
                         data_param = "json=data"
                     except json.JSONDecodeError:
+                        sublime.error_message(f"json内容无法loads!")
                         pass
                 elif 'application/x-www-form-urlencoded' in content_type:
                     try:
