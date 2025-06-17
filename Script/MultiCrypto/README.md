@@ -4,7 +4,7 @@
 
 ## 功能特点
 
-- 🔒 **丰富的哈希算法**: MD5, SHA1, SHA2系列, SHA3系列, HMAC系列, RIPEMD160
+- 🔒 **丰富的哈希算法**: MD5, SHA1, SHA2系列, SHA3系列(标准库), Keccak系列, HMAC系列, RIPEMD160
 - 🔐 **专业对称加密**: AES, DES, TripleDES (需要专业加密库)
 - 📝 **多种编码方式**: Base64, Base32, Hex, Unicode, URL编码等
 - 🔄 **字符串变换**: 大小写变换, 反转, ROT13, 摩尔斯电码
@@ -14,10 +14,10 @@
 ## 支持的加密方法
 
 ### 哈希算法 (Hash Algorithms)
-- **标准库支持**: MD5, SHA1, SHA224, SHA256, SHA384, SHA512
+- **标准库支持**: MD5, SHA1, SHA224, SHA256, SHA384, SHA512, SHA3-224, SHA3-256, SHA3-384, SHA3-512
 - **HMAC系列**: HmacMD5, HmacSHA1, HmacSHA256, HmacSHA512
 - **校验和**: CRC32, Adler32
-- **高级算法**: SHA3-224, SHA3-256, SHA3-384, SHA3-512, RIPEMD160
+- **高级算法**: Keccak-224, Keccak-256, Keccak-384, Keccak-512 (需安装 pycryptodome) ，RIPEMD160 (取决于 OpenSSL，若不支持可安装 pycryptodome)
 
 ### 编码方法 (Encoding Methods)
 - **Base编码**: Base64, Base32, Base16
@@ -28,9 +28,15 @@
 - **其他编码**: Quoted-Printable
 
 ### 对称加密 (Symmetric Encryption)
-- **专业加密**: AES, DES, TripleDES
-- **其他算法**: RC4, RC4Drop, Rabbit
-- **注意**: 需要安装 `pycryptodome` 库
+- **可用算法**: AES, DES, TripleDES, RC4, RC4Drop  （Rabbit 暂未实现）
+- **依赖检测**: 安装 `pycryptodome` 后自动启用全部算法；未安装时仅输出提示信息。
+- **参数说明**:
+  - 默认密钥: `'defaultkey123456'` （截取前 16 B，DES/3DES 会再按算法要求取 8 B / 24 B）
+  - 随机盐: 8 B
+  - 输出格式: `Base64(  Salted__ | salt | cipher  )`
+    - 其中 `Salted__` 为固定 ASCII 前缀，`salt` 为 8 B 随机盐，`cipher` 为密文
+  - AES/DES/TripleDES 采用 ECB 模式并在加密前进行 PKCS7 填充
+  - RC4 使用 `drop=0`，RC4Drop 使用 `drop=3072`
 
 ### 其他变换 (Other Transformations)
 - **字符串变换**: 大写/小写转换, 反转字符串, 大小写互换
@@ -48,18 +54,55 @@
 ### 安装专业加密库
 ```bash
 pip install pycryptodome
+
+# 如果想直接安装到 Sublime Text 内置 Python（推荐，避免版本不匹配）
+# 1. 先找到 plugin_host-3.8 路径，例如：
+#    /Applications/Sublime\ Text.app/Contents/MacOS/plugin_host-3.8
+# 2. 执行带 --target 的安装，把库文件写进 Sublime 的 python38 目录
+#    （macOS 示例）
+#    ```bash
+#    /Applications/Sublime\ Text.app/Contents/MacOS/plugin_host-3.8 \
+#        -m pip install --upgrade --target \
+#        "$HOME/Library/Application Support/Sublime Text/Lib/python38" \
+#        pycryptodome
+#    ```
+#    （Windows 示例，管理员 PowerShell）
+#    ```powershell
+#    "C:\Program Files\Sublime Text\plugin_host-3.8.exe" `
+#        -m pip install --upgrade `
+#        --target "$Env:APPDATA\Sublime Text\Lib\python38" `
+#        pycryptodome
+#    ```
+# 3. 重启 Sublime Text，控制台验证：
+#    ```python
+#    >>> from Crypto.Hash import keccak
+#    >>> keccak.new(digest_bits=256).hexdigest()[:16]
+#    '4e03657aea45a94f'  # 能正常输出即成功
+#    ```
+#
+# 也可以直接使用系统 Python（与sublime的python版本一致）执行同样的 --target 安装。
+# 例如 macOS:
+# ```bash
+# python3 -m pip install --upgrade \
+#     --target "$HOME/Library/Application Support/Sublime Text/Lib/python38" \
+#     pycryptodome
+# ```
+# Linux/WSL 和其他平台类似，把目标目录换成对应的 `~/.config/sublime-text/Lib/python38` 或安装路径。
 ```
 
 **注意**: 
 - 需要在Sublime Text的Python环境中安装
 - 安装后需要重启Sublime Text
-- 某些系统可能原生支持SHA3和RIPEMD160算法
+- SHA3 系列已在 Python 3.6+ 标准库中提供；RIPEMD160 依赖于当前 OpenSSL 是否启用该算法，如未启用可安装 pycryptodome 获得支持
 
 ## 安装方法
 
 ### 快速安装（推荐）
 
-1. **安装插件**：
+1. **切换到 Python 3.8**  
+   Sublime Text 自 build 4050 起可让插件使用 Python 3.8。只需在插件目录（`Packages/MultiCrypto/`）创建一个名为 **`.python-version`** 的文件，内容为 `3.8` 即可。然后重启 Sublime Text。
+
+2. **安装插件**：
    ```bash
    # 下载并解压到Sublime Text的Packages目录
    # Windows: %APPDATA%\Sublime Text\Packages\MultiCrypto\
@@ -67,13 +110,13 @@ pip install pycryptodome
    # Linux: ~/.config/sublime-text/Packages/MultiCrypto\
    ```
 
-2. **自动安装依赖**：
+3. **自动安装依赖**：
    ```bash
    cd MultiCrypto
    python install_dependencies.py
    ```
 
-3. **重启Sublime Text**
+4. **重启Sublime Text**
 
 ### 详细安装步骤
 

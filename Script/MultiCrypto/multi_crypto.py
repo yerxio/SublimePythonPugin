@@ -8,7 +8,7 @@ import html
 import quopri
 import hmac
 import struct
-
+import sys
 
 class MultiCryptoCommand(sublime_plugin.TextCommand):
     """多种加密命令类"""
@@ -45,42 +45,43 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
             results['SHA384'] = hashlib.sha384(text_bytes).hexdigest()
             results['SHA512'] = hashlib.sha512(text_bytes).hexdigest()
             
-            # SHA3系列 - 检测原生支持
+            # SHA3系列 - Python3.6+ 已内置于hashlib，无需依赖第三方库
             try:
+                # Python 3.6+ 原生支持 SHA3 系列
                 results['SHA3-224'] = hashlib.sha3_224(text_bytes).hexdigest()
                 results['SHA3-256'] = hashlib.sha3_256(text_bytes).hexdigest()
                 results['SHA3-384'] = hashlib.sha3_384(text_bytes).hexdigest()
                 results['SHA3-512'] = hashlib.sha3_512(text_bytes).hexdigest()
             except AttributeError:
-                # 检测是否有pycryptodome支持
-                try:
-                    from Crypto.Hash import SHA3_224, SHA3_256, SHA3_384, SHA3_512
-                    results['SHA3-224'] = SHA3_224.new(text_bytes).hexdigest()
-                    results['SHA3-256'] = SHA3_256.new(text_bytes).hexdigest()
-                    results['SHA3-384'] = SHA3_384.new(text_bytes).hexdigest()
-                    results['SHA3-512'] = SHA3_512.new(text_bytes).hexdigest()
-                except ImportError:
-                    results['SHA3-224'] = '原生不支持，请安装pycryptodome库'
-                    results['SHA3-256'] = '原生不支持，请安装pycryptodome库'
-                    results['SHA3-384'] = '原生不支持，请安装pycryptodome库'
-                    results['SHA3-512'] = '原生不支持，请安装pycryptodome库'
+                # 极少数精简发行版可能禁用了 SHA3
+                print("Python版本: {}".format(sys.version))
+                results['SHA3-224'] = '当前Python运行时不支持 SHA3-224'
+                results['SHA3-256'] = '当前Python运行时不支持 SHA3-256'
+                results['SHA3-384'] = '当前Python运行时不支持 SHA3-384'
+                results['SHA3-512'] = '当前Python运行时不支持 SHA3-512'
             
-            # RIPEMD160 - 检测专业库支持
+            # RIPEMD160 - 标准库仅在编译时启用 OpenSSL 对应算法时才可用
             try:
-                # 首先尝试使用pycryptodome
-                from Crypto.Hash import RIPEMD160
-                ripemd = RIPEMD160.new()
-                ripemd.update(text_bytes)
-                results['RIPEMD160'] = ripemd.hexdigest()
+                results['RIPEMD160'] = hashlib.new('ripemd160', text_bytes).hexdigest()
+            except (ValueError, AttributeError):
+                # OpenSSL 不支持或被禁用
+                results['RIPEMD160'] = '当前Python/OpenSSL不支持 RIPEMD160 (可安装 pycryptodome)'
+            
+            # Keccak 原始版本（与FIPS 202 SHA3不同的padding）
+            # 尝试使用 pycryptodome 的 Crypto.Hash.keccak
+            keccak_bits = [224, 256, 384, 512]
+            try:
+                from Crypto.Hash import keccak
+                for bits in keccak_bits:
+                    k = keccak.new(digest_bits=bits)
+                    k.update(text_bytes)
+                    results[f'Keccak-{bits}'] = k.hexdigest()
             except ImportError:
-                try:
-                    # 尝试使用hashlib的新版本（某些Python发行版可能支持）
-                    results['RIPEMD160'] = hashlib.new('ripemd160', text_bytes).hexdigest()
-                except (ValueError, AttributeError):
-                    results['RIPEMD160'] = '原生不支持，请安装pycryptodome库'
+                for bits in keccak_bits:
+                    results[f'Keccak-{bits}'] = '原生不支持，请安装 pycryptodome 库'
             
             # HMAC系列（使用默认密钥"key"）
-            default_key = b"key"
+            default_key = b""
             results['HmacMD5'] = hmac.new(default_key, text_bytes, hashlib.md5).hexdigest()
             results['HmacSHA1'] = hmac.new(default_key, text_bytes, hashlib.sha1).hexdigest()
             results['HmacSHA256'] = hmac.new(default_key, text_bytes, hashlib.sha256).hexdigest()
@@ -150,11 +151,13 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
             text_bytes = text.encode('utf-8')
             results = {}
             
+            pycrypto_ok = False  # 记录是否安装了pycryptodome
             # 检测是否有专业加密库支持
             try:
-                from Crypto.Cipher import AES, DES, DES3
+                from Crypto.Cipher import AES, DES, DES3, ARC4
                 from Crypto.Random import get_random_bytes
                 from Crypto.Util.Padding import pad
+                pycrypto_ok = True
                 
                 # 使用专业加密库
                 default_key = b'defaultkey123456'[:16]  # AES需要16字节密钥
@@ -192,19 +195,42 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
                 except Exception as e:
                     results['TripleDES'] = '加密失败: {}'.format(str(e))
                 
-                # RC4和其他算法
-                results['RC4'] = '需要专门的RC4实现，请安装更完整的加密库'
-                results['RC4Drop'] = '需要专门的RC4实现，请安装更完整的加密库'
-                results['Rabbit'] = '需要专门的Rabbit实现，请安装更完整的加密库'
+                # RC4
+                try:
+                    rc4_cipher = ARC4.new(default_key)
+                    rc4_encrypted = rc4_cipher.encrypt(text_bytes)
+                    salted_rc4 = b'Salted__' + default_salt + rc4_encrypted
+                    results['RC4'] = base64.b64encode(salted_rc4).decode('utf-8')
+                except Exception:
+                    results['RC4'] = '原生不支持，请安装pycryptodome库'
                 
+                # RC4Drop - 丢弃前 3072 字节（与 OpenSSL 一致）
+                rc4_drop_cipher = ARC4.new(default_key, drop=3072)
+                rc4_drop_encrypted = rc4_drop_cipher.encrypt(text_bytes)
+                salted_rc4d = b'Salted__' + default_salt + rc4_drop_encrypted
+                results['RC4Drop'] = base64.b64encode(salted_rc4d).decode('utf-8')
+                
+                # Rabbit 流加密 - 无主流库支持
+                results['Rabbit'] = 'Python 主流库暂未实现 Rabbit cipher'
+                
+                # 记录依赖状态
+                results['_pycryptodome'] = pycrypto_ok
             except ImportError:
                 # 没有专业加密库
                 results['AES'] = '原生不支持，请安装pycryptodome库'
                 results['DES'] = '原生不支持，请安装pycryptodome库'
                 results['TripleDES'] = '原生不支持，请安装pycryptodome库'
-                results['RC4'] = '原生不支持，请安装pycryptodome库'
-                results['RC4Drop'] = '原生不支持，请安装pycryptodome库'
-                results['Rabbit'] = '原生不支持，请安装pycryptodome库'
+                try:
+                    # 仍可尝试纯 Python RC4
+                    rc4_encrypted = self.rc4_encrypt(text_bytes, b'defaultkey')
+                    results['RC4'] = base64.b64encode(rc4_encrypted).decode('utf-8')
+                    rc4_drop_encrypted = self.rc4_encrypt(text_bytes, b'defaultkey', drop=3072)
+                    results['RC4Drop'] = base64.b64encode(rc4_drop_encrypted).decode('utf-8')
+                except Exception:
+                    results['RC4'] = '原生不支持，请安装pycryptodome库'
+                    results['RC4Drop'] = '原生不支持，请安装pycryptodome库'
+                results['Rabbit'] = 'Python 主流库暂未实现 Rabbit cipher'
+                results['_pycryptodome'] = False
             
             return results
         except Exception as e:
@@ -289,6 +315,7 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
             hash_order = [
                 'MD5', 'SHA1', 'SHA224', 'SHA256', 'SHA384', 'SHA512',  # 基础SHA系列
                 'SHA3-224', 'SHA3-256', 'SHA3-384', 'SHA3-512',        # SHA3系列
+                'Keccak-224', 'Keccak-256', 'Keccak-384', 'Keccak-512', # Keccak原始系列
                 'HmacMD5', 'HmacSHA1', 'HmacSHA256', 'HmacSHA512',      # HMAC系列
                 'RIPEMD160',                                            # RIPEMD160
                 'CRC32', 'Adler32'                                      # 校验和
@@ -299,7 +326,7 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
                     result_value = hash_results[hash_type]
                     # 为HMAC系列添加默认密钥说明
                     if hash_type.startswith('Hmac'):
-                        content_lines.append("{}: {} (默认密钥: 'key')".format(hash_type, result_value))
+                        content_lines.append("{}: {} (默认密钥: '')".format(hash_type, result_value))
                     else:
                         content_lines.append("{}: {}".format(hash_type, result_value))
             
@@ -308,7 +335,7 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
                 if hash_type not in hash_order:
                     # 检查是否是HMAC类型
                     if 'hmac' in hash_type.lower() or 'Hmac' in hash_type:
-                        content_lines.append("{}: {} (默认密钥: 'key')".format(hash_type, hash_value))
+                        content_lines.append("{}: {} (默认密钥: '')".format(hash_type, hash_value))
                     else:
                         content_lines.append("{}: {}".format(hash_type, hash_value))
             
@@ -385,8 +412,12 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
                 "=" * 60,
                 "对称加密结果 (Symmetric Encryption):",
                 "=" * 60,
-                "注意: 需要安装pycryptodome库以获得完整的加密功能",
-                "参数说明: 对称加密使用默认密钥 'defaultkey123456' 和随机盐",
+                (
+                    "已安装 pycryptodome，已启用完整对称加密功能"
+                    if crypto_results.get('_pycryptodome') else
+                    "注意: 未检测到 pycryptodome，部分算法不可用"
+                ),
+                "参数说明: 对称加密使用默认密钥 'defaultkey123456' 、随机盐，所有结果均为 Base64(Salted__|salt|cipher)",
                 ""
             ])
             
@@ -403,6 +434,10 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
                             content_lines.append("{}: {} (密钥长度: 8字节, 模式: ECB)".format(crypto_type, result_value))
                         elif crypto_type in ['TripleDES']:
                             content_lines.append("{}: {} (密钥长度: 24字节, 模式: ECB)".format(crypto_type, result_value))
+                        elif crypto_type in ['RC4']:
+                            content_lines.append("{}: {} (密钥长度: 16字节, drop=0)".format(crypto_type, result_value))
+                        elif crypto_type in ['RC4Drop']:
+                            content_lines.append("{}: {} (密钥长度: 16字节, drop=3072)".format(crypto_type, result_value))
                         else:
                             content_lines.append("{}: {} (使用默认参数)".format(crypto_type, result_value))
                     else:
@@ -410,7 +445,7 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
             
             # 添加任何遗漏的加密算法
             for crypto_type, crypto_value in crypto_results.items():
-                if crypto_type not in crypto_order:
+                if crypto_type not in crypto_order and not crypto_type.startswith('_'):
                     content_lines.append("{}: {}".format(crypto_type, crypto_value))
             
             content_lines.extend([
@@ -449,6 +484,38 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
         """检查命令是否在菜单中可见"""
         return self.is_enabled()
 
+    def rc4_encrypt(self, data: bytes, key: bytes, drop: int = 0) -> bytes:
+        """纯Python实现的 RC4/RC4-Drop 加密
+        :param data: 明文 bytes
+        :param key: 密钥 bytes
+        :param drop: 加密前丢弃的 keystream 字节数 (RC4Drop)
+        """
+        # 初始化 S 盒
+        S = list(range(256))
+        j = 0
+        key_len = len(key)
+        for i in range(256):
+            j = (j + S[i] + key[i % key_len]) & 0xFF
+            S[i], S[j] = S[j], S[i]
+
+        # 生成并丢弃前 drop 个字节
+        i = j = 0
+        for _ in range(drop):
+            i = (i + 1) & 0xFF
+            j = (j + S[i]) & 0xFF
+            S[i], S[j] = S[j], S[i]
+            _ = S[(S[i] + S[j]) & 0xFF]
+
+        # 正式加密
+        output = bytearray()
+        for byte in data:
+            i = (i + 1) & 0xFF
+            j = (j + S[i]) & 0xFF
+            S[i], S[j] = S[j], S[i]
+            K = S[(S[i] + S[j]) & 0xFF]
+            output.append(byte ^ K)
+        return bytes(output)
+
 
 class MultiCryptoSelectionCommand(sublime_plugin.TextCommand):
     """为了兼容性添加的选择命令"""
@@ -464,9 +531,9 @@ def plugin_loaded():
     """插件加载时的回调函数"""
     print("MultiCrypto plugin loaded successfully!")
     print("支持的加密方法包括:")
-    print("- 哈希: MD5, SHA1, SHA256, SHA512, HMAC系列 (标准库)")
+    print("- 哈希: MD5, SHA1, SHA256, SHA512, SHA3系列, Keccak系列 (需 pycryptodome), HMAC 系列")
     print("- 编码: Base64, Base32, Hex, Unicode, UTF-16等 (标准库)")
-    print("- 高级算法: SHA3系列, RIPEMD160, AES, DES等 (需要pycryptodome库)")
+    print("- 高级算法: RIPEMD160, AES, DES等 (需要pycryptodome库)")
     print("- 其他: ROT13, 摩尔斯电码, 字符串变换等")
     print("提示: 安装 'pip install pycryptodome' 获得完整功能")
     

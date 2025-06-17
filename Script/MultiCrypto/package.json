@@ -7,15 +7,15 @@
     "readme": "https://github.com/your-username/MultiCrypto#readme",
     "previous_names": [],
     "labels": ["encryption", "hash", "encoding", "cryptography", "security"],
-    "version": "2.1.0",
-    "sublime_text": ">=3000",
+    "version": "4.0.0",
+    "sublime_text": ">=4050",
     "platforms": {
         "*": [
             {
                 "version": "2.1.0",
                 "url": "https://github.com/your-username/MultiCrypto/archive/v2.1.0.zip",
                 "date": "2024-01-01 00:00:00",
-                "sublime_text": ">=3000"
+                "sublime_text": ">=4050"
             }
         ]
     },
