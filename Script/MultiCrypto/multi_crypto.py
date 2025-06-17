@@ -299,6 +299,7 @@ class MultiCryptoCommand(sublime_plugin.TextCommand):
             # 创建新文件
             new_view = self.view.window().new_file()
             new_view.set_name("多种加密结果")
+            new_view.set_scratch(True)
             
             # 构建显示内容
             content_lines = [

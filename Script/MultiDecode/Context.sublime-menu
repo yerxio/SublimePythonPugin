@@ -1,0 +1,9 @@
+[
+    {
+        "caption": "多种解密",
+        "command": "multi_decode_selection",
+        "context": [
+            { "key": "selection_empty", "operator": "equal", "operand": false }
+        ]
+    }
+] 
