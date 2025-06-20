@@ -6,7 +6,7 @@
 	{ "keys": ["ctrl+["], "command": "fold" },
 	{ "keys": ["ctrl+]"], "command": "unfold" },
 	{ "keys": ["super+b"], "command": "toggle_side_bar" },
-	{ "keys": ["ctrl+option+b"], "command": "build" },
+	{ "keys": ["ctrl+option+n"], "command": "build" },
 	{ "keys": ["ctrl+forward_slash"], "command": "toggle_comment", "args": { "block": false } },
 	{ "keys": ["super+m"], "command": "move_to", "args": {"to": "brackets"} },
 	{ "keys": ["super+shift+k"], "command": "run_macro_file", "args": {"file": "res://Packages/Default/Delete Line.sublime-macro"} },
