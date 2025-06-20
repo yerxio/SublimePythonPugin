@@ -1,0 +1,10 @@
+[
+    {
+        "caption": "EscapeReplace: 转义字符去除",
+        "command": "escape_replace"
+    },
+    {
+        "caption": "EscapeReplace: HAR JSON 恢复",
+        "command": "har_json_restore"
+    }
+] 
