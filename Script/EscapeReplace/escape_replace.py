@@ -11,6 +11,24 @@ class EscapeReplaceCommand(sublime_plugin.TextCommand):
     # ------------------------------------------------------------------
     # 核心逻辑
     # ------------------------------------------------------------------
+    MAX_JSON_DEPTH = 3  # 尝试多层 JSON 解析的最大深度
+
+    @staticmethod
+    def _decode_json_layers(text):
+        """尝试多层 json.loads; 若解析为对象则漂亮打印, 否则返回 None"""
+        for _ in range(EscapeReplaceCommand.MAX_JSON_DEPTH):
+            try:
+                value = json.loads(text)
+            except Exception:
+                break
+            # 如果解析后得到字符串, 继续下一层
+            if isinstance(value, str):
+                text = value
+                continue
+            # 得到结构化对象, 返回格式化 JSON
+            return json.dumps(value, ensure_ascii=False, indent=4)
+        return None
+
     @staticmethod
     def _unescape(text):
         """去转义流程：JSON -> unicode_escape -> ast.literal_eval；全部失败返回 None"""
@@ -46,7 +64,13 @@ class EscapeReplaceCommand(sublime_plugin.TextCommand):
                 continue
 
             original = self.view.substr(region)
-            transformed = EscapeReplaceCommand._unescape(original)
+
+            # 先尝试多层 JSON 解析
+            transformed = EscapeReplaceCommand._decode_json_layers(original)
+
+            # 若 JSON 解析失败, 继续走通用去转义流程
+            if transformed is None:
+                transformed = EscapeReplaceCommand._unescape(original)
 
             # 若解析失败则保留原样，并标记失败
             if transformed is None:
@@ -59,43 +83,6 @@ class EscapeReplaceCommand(sublime_plugin.TextCommand):
             sublime.message_dialog("未能解析部分/全部选中文本中的转义字符，已保持原样。")
 
     # 仅在有选区时才可用
-    def is_enabled(self):
-        return any(not sel.empty() for sel in self.view.sel())
-
-
-class HarJsonRestoreCommand(sublime_plugin.TextCommand):
-    """针对 mitmproxy 导出的 HAR 中被二次转义的 JSON 文本, 恢复为可读 JSON."""
-
-    MAX_DECODE_DEPTH = 3  # 最多递归解析 3 层
-
-    @staticmethod
-    def _decode_json_layers(text: str):
-        """尝试多层 json.loads, 直到得到结构化对象为止."""
-        for _ in range(HarJsonRestoreCommand.MAX_DECODE_DEPTH):
-            try:
-                value = json.loads(text)
-            except Exception:
-                break  # 当前层解析失败, 跳出
-            # 如果解析结果还是 str, 继续尝试下一层
-            if isinstance(value, str):
-                text = value
-                continue
-            # 成功解析为 dict / list 等, 返回漂亮格式
-            return json.dumps(value, ensure_ascii=False, indent=4)
-        # 若未成功解析为对象, 返回基础去转义结果(若失败则返回原文本)
-        fallback = EscapeReplaceCommand._unescape(text)
-        return fallback if fallback is not None else text
-
-    # ------------------------------------------------------------------
-    def run(self, edit):
-        for region in self.view.sel():
-            if region.empty():
-                continue
-
-            original = self.view.substr(region)
-            recovered = self._decode_json_layers(original)
-            self.view.replace(edit, region, recovered)
-
     def is_enabled(self):
         return any(not sel.empty() for sel in self.view.sel())
 
