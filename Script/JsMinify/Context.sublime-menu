@@ -1,6 +1,6 @@
 [
     {
-        "caption": "JS极致压缩",
+        "caption": "babel标准压缩",
         "command": "js_minify",
         "context": [
             { "key": "selection_empty", "operator": "equal", "operand": false }
