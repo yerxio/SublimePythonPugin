@@ -1,13 +1,24 @@
 import sublime
 import sublime_plugin
 import subprocess
-import os
+import os, platform
 
-# 直接使用您提供的 Node.js 路径
-NODE_PATH = "/Users/yangxiao/.nvm/versions/node/v16.18.1/bin/node"
+system = platform.system()
+if system == 'Windows':
+    # 直接使用您提供的 Node.js 路径
+    NODE_PATH = "D:\\nvm-windows\\v16.18.1\\node.exe"
 
-# 获取全局 npm 包路径
-GLOBAL_NPM_PATH = "/Users/yangxiao/.nvm/versions/node/v16.18.1/lib/node_modules"
+    # 获取全局 npm 包路径
+    GLOBAL_NPM_PATH = "D:\\nvm-windows\\v16.18.1\\node_modules"
+elif system == 'Darwin':
+    # 直接使用您提供的 Node.js 路径
+    NODE_PATH = "/Users/yangxiao/.nvm/versions/node/v16.18.1/bin/node"
+
+    # 获取全局 npm 包路径
+    GLOBAL_NPM_PATH = "/Users/yangxiao/.nvm/versions/node/v16.18.1/lib/node_modules"
+else:
+    print("js_minifify-其他操作系统:", system)
+
 
 # 构建 Babel 模块的完整路径
 BABEL_PARSER_PATH = os.path.join(GLOBAL_NPM_PATH, "@babel/parser")
@@ -15,8 +26,8 @@ BABEL_GENERATOR_PATH = os.path.join(GLOBAL_NPM_PATH, "@babel/generator")
 
 NODE_SCRIPT = f'''
 // 直接使用完整路径引入模块
-const parser = require('{BABEL_PARSER_PATH}');
-const generator = require('{BABEL_GENERATOR_PATH}').default;
+const parser = require('@babel/parser');
+const generator = require('@babel/generator').default;
 
 let sourceCode = '';
 process.stdin.setEncoding('utf-8');
@@ -109,8 +120,6 @@ class JsMinifyCommand(sublime_plugin.TextCommand):
 
 def plugin_loaded():
     print(f"JsMinify 插件已加载。使用Node路径: {NODE_PATH}")
-    print(f"Babel解析器路径: {BABEL_PARSER_PATH}")
-    print(f"Babel生成器路径: {BABEL_GENERATOR_PATH}")
 
 def plugin_unloaded():
     print("JsMinify 插件已卸载。")
