@@ -103,6 +103,14 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                     headers[key] = val
                     if key.lower() == 'content-type':
                         content_type = val.lower()
+            elif token in ['-b', '--cookie']:
+                i += 1
+                cookie_string = tokens[i]
+                cookie_parts = [c.strip() for c in cookie_string.split(";")]
+                for part in cookie_parts:
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        cookies_dict[k.strip()] = v.strip()
             elif token in ['--data', '--data-raw', '--data-binary', '-d', '--data-urlencode']:
                 i += 1
                 if data is None:
@@ -110,7 +118,6 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                 else:
                     data += '&' + tokens[i]
                 method = 'post'
-
             elif not token.startswith('-') and url == '':
                 url = token
             i += 1
@@ -145,7 +152,6 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
         data_code = ""
         data_param = ""
         if data:
-            # 尝试解析为JSON
             try:
                 json_data = json.loads(data)
                 is_json = True
@@ -153,35 +159,29 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                 data_code += f"data = json.dumps(data)\n"
                 data_param = "json=data"
             except json.JSONDecodeError:
-                # 如果不是JSON，尝试解析为查询字符串
                 try:
                     parsed_data = urllib.parse.parse_qs(data)
                     if len(parsed_data) == 1 and len(list(parsed_data.values())[0]) == 1:
-                        # 如果是单个键值对，可能是JSON字符串
                         try:
                             json_data = json.loads(list(parsed_data.values())[0][0])
                             is_json = True
                             data_code = f"data = {json.dumps(json_data, indent=4)}\n"
                             data_param = "json=data"
                         except json.JSONDecodeError:
-                            # 确实是表单数据
                             is_json = False
                             data_dict = {k: v[0] if len(v) == 1 else v for k, v in parsed_data.items()}
                             data_code = f"data = {data_dict}\n"
                             data_param = "data=data"
                     else:
-                        # 表单数据
                         is_json = False
                         data_dict = {k: v[0] if len(v) == 1 else v for k, v in parsed_data.items()}
                         data_code = f"data = {data_dict}\n"
                         data_param = "data=data"
                 except:
-                    # 无法解析为查询字符串，直接作为原始数据
                     is_json = False
                     data_code = f"data = '{data}'\n"
                     data_param = "data=data"
 
-            # 根据Content-Type覆盖判断
             if content_type:
                 if 'application/json' in content_type:
                     try:
@@ -191,7 +191,6 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                         data_param = "json=data"
                     except json.JSONDecodeError:
                         sublime.error_message(f"json内容无法loads!")
-                        pass
                 elif 'application/x-www-form-urlencoded' in content_type:
                     try:
                         parsed_data = urllib.parse.parse_qs(data)
@@ -208,7 +207,6 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                                 sublime.error_message(f"data中有值类型是列表: 键={k}, 值={v} ({type(v).__name__})")
                             else:
                                 sublime.error_message(f"data中有未知值类型: 键={k}, 值={v} ({type(v).__name__})")
-                                
                         data_code += "}\n"
                         data_param = "data=data"
                     except:
