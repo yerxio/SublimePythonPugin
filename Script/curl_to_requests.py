@@ -3,7 +3,7 @@ import sublime_plugin
 import shlex
 import json
 import urllib.parse
-
+import re
 
 class CurlToRequestsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
@@ -187,7 +187,13 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                     try:
                         json_data = json.loads(data)
                         is_json = True
-                        data_code = f"data = {json.dumps(json_data, indent=4)}\n"
+                        json_data = json.dumps(json_data, indent=4, ensure_ascii=False)
+                        json_data = re.sub(
+                            r'(?<=:\s)(true|false|null)(?=\s*[,\n}\]])',
+                            lambda m: {'true': 'True', 'false': 'False', 'null': 'None'}[m.group(1)],
+                            json_data
+                        )
+                        data_code = f"data = {json_data}\n"
                         data_param = "json=data"
                     except json.JSONDecodeError:
                         sublime.error_message(f"json内容无法loads!")
