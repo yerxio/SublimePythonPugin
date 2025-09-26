@@ -1,15 +1,13 @@
 import sublime
 import sublime_plugin
 import urllib.parse
+import json
 
 
 def format_dict(d):
-    """格式化 dict，换行 & 缩进"""
-    lines = ["{"]  
-    for k, v in d.items():
-        lines.append("    {!r}: {!r},".format(k, v))
-    lines.append("}")
-    return "\n".join(lines)
+    """格式化 dict，使用 JSON 风格的双引号 + 换行缩进"""
+    # json.dumps 会自动用双引号，并支持缩进
+    return json.dumps(d, indent=4, ensure_ascii=False)
 
 
 class UrlToPythonCommand(sublime_plugin.TextCommand):
@@ -37,7 +35,7 @@ class UrlToPythonCommand(sublime_plugin.TextCommand):
                     else:
                         params[k] = v
 
-                # 自定义格式化
+                # 自定义格式化，保证双引号
                 params_str = format_dict(params)
 
                 py_code = (
