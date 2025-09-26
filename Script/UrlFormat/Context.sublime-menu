@@ -1,0 +1,9 @@
+[
+    {
+        "caption": "Url参数格式化 (Python风格)",
+        "command": "url_to_python",
+        "context": [
+            { "key": "selection_empty", "operator": "equal", "operand": false }
+        ]
+    }
+]
