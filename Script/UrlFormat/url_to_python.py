@@ -2,11 +2,11 @@ import sublime
 import sublime_plugin
 import urllib.parse
 import json
+from collections import OrderedDict
 
 
 def format_dict(d):
-    """格式化 dict，使用 JSON 风格的双引号 + 换行缩进"""
-    # json.dumps 会自动用双引号，并支持缩进
+    """格式化 dict，使用 JSON 风格双引号 + 保持顺序"""
     return json.dumps(d, indent=4, ensure_ascii=False)
 
 
@@ -26,16 +26,20 @@ class UrlToPythonCommand(sublime_plugin.TextCommand):
                 parsed = urllib.parse.urlparse(url_text.strip())
                 base_url = "{}://{}{}".format(parsed.scheme, parsed.netloc, parsed.path)
 
-                query_params = urllib.parse.parse_qs(parsed.query)
-                # 转换为 {k: v} 格式（只取第一个值）
-                params = {}
-                for k, v in query_params.items():
-                    if len(v) == 1:
-                        params[k] = v[0]
+                # OrderedDict 保证顺序
+                query_params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+                params = OrderedDict()
+                for k, v in query_params:
+                    if k in params:
+                        # 如果同名参数多次出现 -> 转成列表
+                        if isinstance(params[k], list):
+                            params[k].append(v)
+                        else:
+                            params[k] = [params[k], v]
                     else:
                         params[k] = v
 
-                # 自定义格式化，保证双引号
+                # 格式化
                 params_str = format_dict(params)
 
                 py_code = (
