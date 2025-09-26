@@ -3,6 +3,15 @@ import sublime_plugin
 import urllib.parse
 
 
+def format_dict(d):
+    """格式化 dict，换行 & 缩进"""
+    lines = ["{"]  
+    for k, v in d.items():
+        lines.append("    {!r}: {!r},".format(k, v))
+    lines.append("}")
+    return "\n".join(lines)
+
+
 class UrlToPythonCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         # 获取用户选择的 URL（如果没选，则取整行）
@@ -17,15 +26,23 @@ class UrlToPythonCommand(sublime_plugin.TextCommand):
 
             try:
                 parsed = urllib.parse.urlparse(url_text.strip())
-                base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                base_url = "{}://{}{}".format(parsed.scheme, parsed.netloc, parsed.path)
 
                 query_params = urllib.parse.parse_qs(parsed.query)
                 # 转换为 {k: v} 格式（只取第一个值）
-                params = {k: v[0] if len(v) == 1 else v for k, v in query_params.items()}
+                params = {}
+                for k, v in query_params.items():
+                    if len(v) == 1:
+                        params[k] = v[0]
+                    else:
+                        params[k] = v
+
+                # 自定义格式化
+                params_str = format_dict(params)
 
                 py_code = (
-                    f'url = "{base_url}"\n'
-                    f"params = {repr(params)}\n"
+                    'url = "{}"\n'.format(base_url) +
+                    "params = {}\n".format(params_str)
                 )
 
                 # 新建一个临时的 python buffer
@@ -33,7 +50,9 @@ class UrlToPythonCommand(sublime_plugin.TextCommand):
                 new_view.set_scratch(True)  # 关闭时不提示保存
                 new_view.set_name("url_params.py")
                 new_view.set_syntax_file("Packages/Python/Python.sublime-syntax")
-                new_view.insert(edit, 0, py_code)
+
+                # 在新 buffer 插入内容
+                new_view.run_command("append", {"characters": py_code})
 
             except Exception as e:
-                sublime.error_message(f"解析 URL 出错: {e}")
+                sublime.error_message("解析 URL 出错: {}".format(e))
