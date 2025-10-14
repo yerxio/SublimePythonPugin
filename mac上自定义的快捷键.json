@@ -1,15 +1,30 @@
 [
-    {"keys":["super+shift+d"],"command":"compare_python_dicts","context":[{"key":"selector","operator":"equal","operand":"source.python"}]},
 	{"keys":["super+d"],"command":"duplicate_line"},
 	{ "keys": ["super+["], "command": "fold" },
 	{ "keys": ["super+]"], "command": "unfold" },
 	{ "keys": ["ctrl+["], "command": "fold" },
 	{ "keys": ["ctrl+]"], "command": "unfold" },
+    { "keys": ["super+shift+["], "command": "fold_by_level", "args": {"level": 0} },
+    { "keys": ["super+shift+]"], "command": "unfold_all" },
+    { "keys": ["super+k"], "command": "unfold_all" },
+	{ "keys": ["super+k", "super+j"], "command": "unfold_all" },
 	{ "keys": ["super+b"], "command": "toggle_side_bar" },
 	{ "keys": ["ctrl+option+n"], "command": "build" },
+	{ "keys": ["super+r"], "command": "show_panel", "args": {"panel": "replace", "reverse": false} },
 	{ "keys": ["ctrl+forward_slash"], "command": "toggle_comment", "args": { "block": false } },
 	{ "keys": ["super+m"], "command": "move_to", "args": {"to": "brackets"} },
 	{ "keys": ["super+shift+k"], "command": "run_macro_file", "args": {"file": "res://Packages/Default/Delete Line.sublime-macro"} },
+	{"keys":["super+shift+d"],
+		"command":"compare_python_dicts",
+		"context":[
+			{
+				"key":"selector",
+				"operator":"equal",
+				"operand":"source.python"
+			}
+		]
+	},
+	{ "keys": ["ctrl+shift+["], "command": "fold" },
 	{ "keys": ["super+j", "super+c"], "command": "copy_json_path"},
     {
         "keys": ["super+shift+j"],
