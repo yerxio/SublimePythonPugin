@@ -90,9 +90,13 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
             elif token in ['-H', '--header']:
                 i += 1
                 header = tokens[i]
-                key, val = header.split(":", 1)
-                key = key.strip()
-                val = val.strip()
+                if ":" in header:
+                    key, val = header.split(":", 1)
+                    key = key.strip()
+                    val = val.strip()
+                else:
+                    key = header.strip()
+                    val = ""
                 if key.lower() == "cookie":
                     cookie_parts = [c.strip() for c in val.split(";")]
                     for part in cookie_parts:
