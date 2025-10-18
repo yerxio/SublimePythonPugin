@@ -13,6 +13,7 @@
 	{ "keys": ["super+r"], "command": "show_panel", "args": {"panel": "replace", "reverse": false} },
 	{ "keys": ["ctrl+forward_slash"], "command": "toggle_comment", "args": { "block": false } },
 	{ "keys": ["super+m"], "command": "move_to", "args": {"to": "brackets"} },
+	{ "keys": ["ctrl+r"], "command": "show_panel", "args": {"panel": "replace", "reverse": false} },
 	{ "keys": ["super+shift+k"], "command": "run_macro_file", "args": {"file": "res://Packages/Default/Delete Line.sublime-macro"} },
 	{"keys":["super+shift+d"],
 		"command":"compare_python_dicts",
