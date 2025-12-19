@@ -60,7 +60,7 @@
 * 直接将脚本赋值到以下位置
 
 ```bash
-# Windows: [程序安装位置]\Packages\User
+# Windows: [程序安装位置]\Packages\User    # 如果没有User文件夹自己创建一个
 # Mac: ~/Library/Application Support/Sublime Text/Packages/User
 # Linux: ~/.config/sublime-text/Packages/User
 ```
