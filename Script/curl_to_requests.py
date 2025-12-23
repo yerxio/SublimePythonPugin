@@ -51,33 +51,49 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
         new_view.run_command("append", {"characters": content})
 
     def format_curl_multiline(self, curl_command):
-        tokens = shlex.split(curl_command)
-        if not tokens or tokens[0].lower() != 'curl':
-            return curl_command.strip()
+            try:
+                tokens = shlex.split(curl_command)
+            except ValueError:
+                # 如果 shlex 解析失败（例如引号未闭合），直接返回原文本
+                return curl_command.strip()
 
-        parts = []
-        i = 1
-        while i < len(tokens):
-            token = tokens[i]
-            if token.startswith('-'):
-                if i + 1 < len(tokens) and not tokens[i + 1].startswith('-'):
-                    parts.append(f'     {token} "{tokens[i + 1]}"')
-                    i += 2
-                else:
-                    parts.append(f'     {token}')
+            if not tokens or tokens[0].lower() != 'curl':
+                return curl_command.strip()
+
+            parts = []
+            i = 1
+            while i < len(tokens):
+                token = tokens[i]
+                
+                # [修改关键点] 过滤掉空的或者只包含空白符(换行/空格)的 token
+                # 它们通常是复制粘贴带来的格式噪音，不是有效的参数
+                if not token or not token.strip():
                     i += 1
-            else:
-                if not parts:
-                    parts.append(f'curl "{token}"')
+                    continue
+
+                if token.startswith('-'):
+                    # 判断下一个 token 是否存在且不是 flag (处理参数值)
+                    if i + 1 < len(tokens) and not tokens[i + 1].startswith('-'):
+                        # 这里直接使用 tokens[i+1]，不额外加引号，保持原样或者按需处理
+                        # 为了美观，通常给 value 加引号
+                        parts.append(f'     {token} "{tokens[i + 1]}"')
+                        i += 2
+                    else:
+                        parts.append(f'     {token}')
+                        i += 1
                 else:
-                    parts.append(f'     "{token}"')
-                i += 1
+                    # 只有非空的、非flag的内容才会被视为 URL 或位置参数
+                    if not parts:
+                        parts.append(f'curl "{token}"')
+                    else:
+                        parts.append(f'     "{token}"')
+                    i += 1
 
-        for j in range(len(parts) - 1):
-            parts[j] += " \\"
+            # 将所有部分用 " \" 连接，形成多行格式
+            for j in range(len(parts) - 1):
+                parts[j] += " \\"
 
-        return "\n".join(parts)
-
+            return "\n".join(parts)
     def convert_curl_to_requests(self, curl_command):
         tokens = shlex.split(curl_command)
         if not tokens or tokens[0].lower() != 'curl':
