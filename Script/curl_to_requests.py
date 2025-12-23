@@ -54,7 +54,6 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
             try:
                 tokens = shlex.split(curl_command)
             except ValueError:
-                # 如果 shlex 解析失败（例如引号未闭合），直接返回原文本
                 return curl_command.strip()
 
             if not tokens or tokens[0].lower() != 'curl':
@@ -62,39 +61,57 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
 
             parts = []
             i = 1
+            
+            # 预定义缩进 (5个空格，为了对齐 'curl ' 的长度)
+            indent_str = "     " 
+
             while i < len(tokens):
                 token = tokens[i]
                 
-                # [修改关键点] 过滤掉空的或者只包含空白符(换行/空格)的 token
-                # 它们通常是复制粘贴带来的格式噪音，不是有效的参数
+                # 过滤无效 token
                 if not token or not token.strip():
                     i += 1
                     continue
 
+                # [关键修改] 决定当前行的前缀
+                # 如果 parts 为空，说明这是命令的第一行，必须用 'curl' 开头
+                # 否则使用空格缩进
+                current_prefix = "curl" if not parts else indent_str
+
                 if token.startswith('-'):
-                    # 判断下一个 token 是否存在且不是 flag (处理参数值)
                     if i + 1 < len(tokens) and not tokens[i + 1].startswith('-'):
-                        # 将 value 中的 " 替换为 \"，防止破坏 Shell 结构
-                        safe_value = tokens[i + 1].replace('"', '\\"')
-                        parts.append(f'     {token} "{safe_value}"')
+                        value = tokens[i + 1]
+                        
+                        # 智能引号策略
+                        if '"' in value and "'" not in value:
+                            # 包含双引号且无单引号 -> 用单引号包裹 (适合 JSON)
+                            parts.append(f"{current_prefix} {token} '{value}'")
+                        else:
+                            # 其他情况 -> 用双引号包裹，并转义内部双引号
+                            safe_value = value.replace('"', '\\"')
+                            parts.append(f'{current_prefix} {token} "{safe_value}"')
+                            
                         i += 2
                     else:
-                        parts.append(f'     {token}')
+                        parts.append(f'{current_prefix} {token}')
                         i += 1
                 else:
-                    # 只有非空的、非flag的内容才会被视为 URL 或位置参数
-                    if not parts:
-                        parts.append(f'curl "{token}"')
+                    # URL 或位置参数
+                    if '"' in token and "'" not in token:
+                        quoted_token = f"'{token}'"
                     else:
-                        parts.append(f'     "{token}"')
+                        safe_token = token.replace('"', '\\"')
+                        quoted_token = f'"{safe_token}"'
+
+                    parts.append(f'{current_prefix} {quoted_token}')
                     i += 1
 
-            # 将所有部分用 " \" 连接，形成多行格式
+            # 将所有部分用 " \" 连接
             for j in range(len(parts) - 1):
                 parts[j] += " \\"
 
             return "\n".join(parts)
-    
+
 
     def convert_curl_to_requests(self, curl_command):
         tokens = shlex.split(curl_command)
