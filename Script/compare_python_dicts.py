@@ -1,6 +1,7 @@
 import sublime
 import sublime_plugin
 import ast
+import json  # 新增引用，用于格式化输出列表
 
 class ComparePythonDictsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
@@ -44,7 +45,9 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
         """递归对比字典，区分不同内容并最终显示"""
         diff = {
             "only_in_dict1": [],
+            "only_in_dict1_keys": [],  # [新增] 存储仅字典1存在的键
             "only_in_dict2": [],
+            "only_in_dict2_keys": [],  # [新增] 存储仅字典2存在的键
             "modified": [],
             "same": []
         }
@@ -56,16 +59,23 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
             
             if key in keys1 and key not in keys2:
                 diff["only_in_dict1"].append(f"❌ {full_path}: {dict1[key]} (仅字典1存在)")
+                diff["only_in_dict1_keys"].append(full_path) # [新增] 记录Key
             elif key not in keys1 and key in keys2:
                 diff["only_in_dict2"].append(f"🆕 {full_path}: {dict2[key]} (仅字典2存在)")
+                diff["only_in_dict2_keys"].append(full_path) # [新增] 记录Key
             else:
                 val1, val2 = dict1[key], dict2[key]
                 
                 if isinstance(val1, dict) and isinstance(val2, dict):
                     # 递归处理嵌套字典
                     nested_diff = self.compare_dicts(val1, val2, f"{full_path}.")
+                    
                     diff["only_in_dict1"].extend(nested_diff["only_in_dict1"])
+                    diff["only_in_dict1_keys"].extend(nested_diff["only_in_dict1_keys"]) # [新增] 合并递归的Key
+                    
                     diff["only_in_dict2"].extend(nested_diff["only_in_dict2"])
+                    diff["only_in_dict2_keys"].extend(nested_diff["only_in_dict2_keys"]) # [新增] 合并递归的Key
+                    
                     diff["modified"].extend(nested_diff["modified"])
                     diff["same"].extend(nested_diff["same"])
                 elif val1 == val2:
@@ -82,7 +92,10 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
 
     def show_diff(self, diff):
         """显示带格式化的对比结果"""
-        if not any(diff.values()):
+        # 判断是否有差异（如果有Key存在，说明一定有差异）
+        has_diff = diff["only_in_dict1"] or diff["only_in_dict2"] or diff["modified"]
+        
+        if not has_diff:
             sublime.message_dialog("两个字典内容完全一致！")
             return
 
@@ -100,18 +113,24 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
         if diff["only_in_dict1"]:
             new_view.run_command("append", {"characters": "\n\n==== 仅第一个字典存在 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["only_in_dict1"])})
+            # [新增] 输出Key列表
+            keys_json = json.dumps(diff["only_in_dict1_keys"], ensure_ascii=False)
+            new_view.run_command("append", {"characters": f"\n{keys_json}"})
         
         # 仅字典2存在的键值对
         if diff["only_in_dict2"]:
             new_view.run_command("append", {"characters": "\n\n==== 仅第二个字典存在 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["only_in_dict2"])})
+            # [新增] 输出Key列表
+            keys_json = json.dumps(diff["only_in_dict2_keys"], ensure_ascii=False)
+            new_view.run_command("append", {"characters": f"\n{keys_json}"})
         
         # 修改的键值对
         if diff["modified"]:
             new_view.run_command("append", {"characters": "\n\n==== 有差异的键值对 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["modified"])})
         
-        # 相同的键值对
+        # 相同的键值对 (可选显示，如果内容太多可以注释掉)
         if diff["same"]:
             new_view.run_command("append", {"characters": "\n\n==== 相同内容 ====\n"})
             new_view.run_command("append", {"characters": "\n".join(diff["same"])})
@@ -122,12 +141,3 @@ class ComparePythonDictsCommand(sublime_plugin.TextCommand):
         
         # 滚动到顶部
         new_view.show(0)
-'''
-	{
-		"keys": ["ctrl+shift+d"],
-		"command": "compare_python_dicts",
-		"context": [
-			{ "key": "selector", "operator": "equal", "operand": "source.python" }
-		]
-	}	
-'''

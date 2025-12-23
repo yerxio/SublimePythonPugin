@@ -298,10 +298,18 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
 
 
 '''
-[
-    {
-        "keys": ["ctrl+l", "ctrl+p"],
-        "command": "curl_to_requests"
-    }
-]
+windows:
+    [
+        {
+            "keys": ["ctrl+l", "ctrl+p"],
+            "command": "curl_to_requests"
+        }
+    ]
+mac:
+    [
+        {
+            "keys": ["super+l", "super+p"],
+            "command": "curl_to_requests"
+        }
+    ]
 '''
