@@ -3,7 +3,7 @@ import sublime_plugin
 import shlex
 import json
 import urllib.parse
-import re
+import re, os
 
 class CurlToRequestsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
@@ -36,7 +36,18 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
         new_view = self.view.window().new_file()
         new_view.set_scratch(True)
         new_view.set_syntax_file('Packages/Python/Python.sublime-syntax')
-        new_view.set_name("curl=>req.py")
+        source_file_path = self.view.file_name()
+        if source_file_path:
+                    # 1. 获取文件名 (例如 /path/to/temp.curl -> temp.curl)
+                    file_name = os.path.basename(source_file_path)
+                    # 2. 分离文件名和后缀 (例如 temp.curl -> ('temp', '.curl'))
+                    file_name_no_ext, _ = os.path.splitext(file_name)
+                    # 3. 拼接新名字
+                    new_tab_name = f"{file_name_no_ext}_req.py"
+        else:
+            # 如果原文件未保存(没有文件名)，使用默认名称
+            new_tab_name = "untitled_req.py"
+        new_view.set_name(new_tab_name)
         new_view.run_command("append", {"characters": content})
 
     def format_curl_multiline(self, curl_command):
