@@ -74,9 +74,9 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                 if token.startswith('-'):
                     # 判断下一个 token 是否存在且不是 flag (处理参数值)
                     if i + 1 < len(tokens) and not tokens[i + 1].startswith('-'):
-                        # 这里直接使用 tokens[i+1]，不额外加引号，保持原样或者按需处理
-                        # 为了美观，通常给 value 加引号
-                        parts.append(f'     {token} "{tokens[i + 1]}"')
+                        # 将 value 中的 " 替换为 \"，防止破坏 Shell 结构
+                        safe_value = tokens[i + 1].replace('"', '\\"')
+                        parts.append(f'     {token} "{safe_value}"')
                         i += 2
                     else:
                         parts.append(f'     {token}')
@@ -94,6 +94,8 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                 parts[j] += " \\"
 
             return "\n".join(parts)
+    
+
     def convert_curl_to_requests(self, curl_command):
         tokens = shlex.split(curl_command)
         if not tokens or tokens[0].lower() != 'curl':
