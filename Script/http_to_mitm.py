@@ -1,6 +1,6 @@
 import sublime
 import sublime_plugin
-import json
+import json, pprint
 import re
 import os
 
@@ -123,7 +123,7 @@ class HttpToMitmCommand(sublime_plugin.TextCommand):
         # A: JSON
         try:
             json_obj = json.loads(body_part)
-            body_code = json.dumps(json_obj, indent=4, ensure_ascii=False)
+            body_code = self.format_py_obj(json_obj)
             body_type_comment = "# Type: JSON (字典)"
             # mode 不在最终字符串用，仅作逻辑判断可以忽略，直接生成模板即可
         except:
@@ -170,6 +170,42 @@ logger.warning('自定义响应成功')
 """
         return template.strip()
 
+    def format_py_obj(self, obj, level=0):
+            """
+            递归格式化 Python 对象，模仿 json.dumps(indent=4) 的视觉风格，
+            但输出的是 Python 语法 (None, True, False, 单引号字符串)
+            """
+            indent = 4
+            base_indent = " " * (indent * level)
+            next_indent = " " * (indent * (level + 1))
+            
+            if isinstance(obj, dict):
+                if not obj: return "{}"
+                items = []
+                for k, v in obj.items():
+                    val_str = self.format_py_obj(v, level + 1)
+                    # 使用 repr(k) 确保键是带引号的字符串
+                    items.append(f"{next_indent}{repr(k)}: {val_str}")
+                return "{\n" + ",\n".join(items) + "\n" + base_indent + "}"
+                
+            elif isinstance(obj, list):
+                if not obj: return "[]"
+                items = []
+                for v in obj:
+                    val_str = self.format_py_obj(v, level + 1)
+                    items.append(f"{next_indent}{val_str}")
+                return "[\n" + ",\n".join(items) + "\n" + base_indent + "]"
+                
+            elif isinstance(obj, str):
+                return repr(obj) # 使用 Python 标准的字符串表示 (通常是单引号)
+            elif obj is None:
+                return "None"
+            elif obj is True:
+                return "True"
+            elif obj is False:
+                return "False"
+            else:
+                return str(obj)
 
 
 """
