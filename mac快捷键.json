@@ -38,5 +38,6 @@
     {
         "keys":["super+q"],
         "command": "json_to_dict"
-    }
+    },
+    { "keys": ["super+shift+m"], "command": "http_to_mitm" }
 ]

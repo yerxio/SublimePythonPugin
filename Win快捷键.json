@@ -31,5 +31,6 @@
     {
         "keys":["ctrl+q"],
         "command": "json_to_dict"
-    }
+    },
+	{ "keys": ["ctrl+shift+m"], "command": "http_to_mitm" }
 ]

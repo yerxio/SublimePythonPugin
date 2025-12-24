@@ -95,7 +95,12 @@ class JsonToDictCommand(sublime_plugin.TextCommand):
 # 创建文件 Packages/User/Default (YourOS).sublime-keymap
 # 并添加以下内容（根据你的操作系统选择对应的文件）:
 """
-[
-    { "keys": ["ctrl+q"], "command": "json_to_dict" }
-]
+windows:
+    [
+        { "keys": ["ctrl+q"], "command": "json_to_dict" }
+    ]
+mac:
+    [
+        { "keys": ["super+q"], "command": "json_to_dict" }
+    ]
 """

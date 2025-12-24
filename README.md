@@ -34,6 +34,8 @@
 | `MultiCrypto` | 对字符串进行多种加密，可以查看多种加密结果。 |
 | `MultiDecode` | 对字符串进行多种解密尝试。 |
 | `UrlFormat` | 对 url 进行格式化，分离请求参数为字典以便对比。 |
+| `http_to_mitm` | 将http的响应(raw)转为mitmproxy构造的响应。 |
+
 
 # 插件安装方法
 
