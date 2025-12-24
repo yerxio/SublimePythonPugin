@@ -140,9 +140,9 @@ class HttpToMitmCommand(sublime_plugin.TextCommand):
                 body_type_comment = "# Type: String (Text/HTML)"
 
         template = f"""
-from mitmproxy import http
-import json
+######
 
+# region 自定义响应
 custom_status_code = {status_code}
 custom_headers = {headers_str} {headers_comment}
 
@@ -165,6 +165,8 @@ flow.response = http.Response.make(
     custom_headers
 )
 logger.warning('自定义响应成功')
+# ctx.master.commands.call("view.flows.remove", [flow]) # 从可视化中去除此请求
+# endregion
 """
         return template.strip()
 
