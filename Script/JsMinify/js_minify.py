@@ -37,7 +37,7 @@ process.stdin.on('end', () => {{
         let ast = parser.parse(sourceCode);
         let {{ code }} = generator(ast, {{
             "compact": true,
-            "comments": true,
+            "comments": false,
             "jsescOption": {{ "minimal": true }}
         }});
         process.stdout.write(code);
