@@ -7,14 +7,31 @@ import re, os
 
 class CurlToRequestsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        for region in self.view.sel():
-            if region.empty():
-                continue
+            selections = self.view.sel()
 
+            # 1. 检查选区数量：如果有多个选区（多光标），直接报错返回
+            if len(selections) > 1:
+                sublime.error_message("检测到多个选区！\n请只选中一段 curl 代码进行转换。")
+                return
+
+            # 获取唯一的选区
+            region = selections[0]
+
+            # 2. 检查是否为空选区（未选中文字）
+            if region.empty():
+                return
+
+            # 3. 执行转换
             curl_command = self.view.substr(region)
             try:
                 python_code = self.convert_curl_to_requests(curl_command)
                 self.display_in_new_tab(curl_command, python_code)
+                
+                # 4. [修改点] 成功后取消选中状态
+                # 清空所有选区，并添加一个新的光标在原选区的末尾
+                selections.clear()
+                selections.add(sublime.Region(region.end(), region.end()))
+                
             except Exception as e:
                 sublime.error_message("Error converting curl to requests:\n{}".format(str(e)))
 
@@ -49,6 +66,12 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
             new_tab_name = "untitled_req.py"
         new_view.set_name(new_tab_name)
         new_view.run_command("append", {"characters": content})
+
+        # level: 1 表示只保留最外层代码，折叠所有缩进内容（如 headers, cookies 字典内部）
+        new_view.run_command("fold_by_level", {"level": 1})
+        
+        # 可选：将光标移动到文件开头，防止滚动条停留在奇怪的位置
+        new_view.run_command("move_to", {"to": "bof"})
 
     def format_curl_multiline(self, curl_command):
             try:
