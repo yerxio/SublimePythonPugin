@@ -52,43 +52,13 @@
 3. **不支持**: 显示安装建议
 
 ### 安装专业加密库
+使用pip --target参数即可
+MacOS:
 ```bash
-pip install pycryptodome
-
-# 如果想直接安装到 Sublime Text 内置 Python（推荐，避免版本不匹配）
-# 1. 先找到 plugin_host-3.8 路径，例如：
-#    /Applications/Sublime\ Text.app/Contents/MacOS/plugin_host-3.8
-# 2. 执行带 --target 的安装，把库文件写进 Sublime 的 python38 目录
-#    （macOS 示例）
-#    ```bash
-#    /Applications/Sublime\ Text.app/Contents/MacOS/plugin_host-3.8 \
-#        -m pip install --upgrade --target \
-#        "$HOME/Library/Application Support/Sublime Text/Lib/python38" \
-#        pycryptodome
-#    ```
-#    （Windows 示例，管理员 PowerShell）
-#    ```powershell
-#    "C:\Program Files\Sublime Text\plugin_host-3.8.exe" `
-#        -m pip install --upgrade `
-#        --target "$Env:APPDATA\Sublime Text\Lib\python38" `
-#        pycryptodome
-#    ```
-# 3. 重启 Sublime Text，控制台验证：
-#    ```python
-#    >>> from Crypto.Hash import keccak
-#    >>> keccak.new(digest_bits=256).hexdigest()[:16]
-#    '4e03657aea45a94f'  # 能正常输出即成功
-#    ```
-#
-# 也可以直接使用系统 Python（与sublime的python版本一致）执行同样的 --target 安装。
-# 例如 macOS:
-# ```bash
-# python3 -m pip install --upgrade \
-#     --target "$HOME/Library/Application Support/Sublime Text/Lib/python38" \
-#     pycryptodome
-# ```
-# Linux/WSL 和其他平台类似，把目标目录换成对应的 `~/.config/sublime-text/Lib/python38` 或安装路径。
+   pip install --target "~/Library/Application Support/Sublime Text/Lib/python38" pycryptodome
 ```
+# Linux/WSL 和其他平台类似，把目标目录换成对应的 `~/.config/sublime-text/Lib/python38` 或安装路径。
+
 
 **注意**: 
 - 需要在Sublime Text的Python环境中安装
@@ -110,33 +80,13 @@ pip install pycryptodome
    # Linux: ~/.config/sublime-text/Packages/MultiCrypto\
    ```
 
-3. **自动安装依赖**：
-   ```bash
-   cd MultiCrypto
-   python install_dependencies.py
-   ```
 
 4. **重启Sublime Text**
-
-### 详细安装步骤
-
-参见相关文档获取完整的安装指南：
-- [INSTALL.md](INSTALL.md) - 完整安装指南和故障排除
-- [PROXY_INSTALL.md](PROXY_INSTALL.md) - 代理环境安装指南  
-- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - 项目结构说明
-
-### 通过Package Control安装
-
-**注意**: Package Control暂不支持自动安装Python库依赖，需要手动安装pycryptodome。
-
-1. 安装插件（未来支持）
-2. 运行依赖安装脚本：`python install_dependencies.py`
 
 ## 使用方法
 
 1. 在Sublime Text中选择要加密的文本
-2. 右键选择 "多种加密" 或使用快捷键 `Ctrl+Shift+E`
-3. 结果将显示在新的标签页中
+2. 结果将显示在新的标签页中
 
 ## 示例输出
 
@@ -207,34 +157,5 @@ Morse编码: .... . .-.. .-.. --- / .-- --- .-. .-.. -.. (标准国际摩尔斯�
    - 兼容 Python 3.3+ 语法
    - 跨平台支持 (Windows, Mac, Linux)
 
-## 更新日志
-
-### v2.1.0
-- 添加参数备注功能
-- HMAC系列算法显示默认密钥信息
-- 对称加密算法显示具体参数（密钥长度、加密模式）
-- 特殊算法（ROT13、摩尔斯电码）添加使用说明
-- 优化用户体验，提供更详细的参数信息
-
-### v2.0.0
-- 去掉所有简化实现
-- 添加专业加密库检测机制
-- 确保输出结果的准确性
-- 优化错误处理和用户提示
-
-### v1.0.0
-- 初始版本发布
-- 支持30+种加密编码方法
-- 分类显示结果
-
-## 贡献
-
-欢迎提交 Issues 和 Pull Requests！
-
-## 许可证
-
-MIT License
-
-## 作者
 
 MultiCrypto Plugin Team 

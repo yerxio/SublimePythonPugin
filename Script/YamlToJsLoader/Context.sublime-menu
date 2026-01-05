@@ -1,0 +1,9 @@
+[
+    {
+        "caption": "YamlToJsLoader",
+        "command": "yaml_to_js",
+        "context": [
+            { "key": "selection_empty", "operator": "equal", "operand": false }
+        ]
+    }
+] 

@@ -35,7 +35,7 @@
 | `MultiDecode` | 对字符串进行多种解密尝试。 |
 | `UrlFormat` | 对 url 进行格式化，分离请求参数为字典以便对比。 |
 | `http_to_mitm` | 将http的响应(raw)转为mitmproxy构造的响应。 |
-
+| `YamlToJs` | 将yaml对象转为js对象(会自动去除非中英文的特殊字符!)。 |
 
 # 插件安装方法
 
