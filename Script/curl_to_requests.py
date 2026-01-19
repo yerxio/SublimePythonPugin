@@ -229,7 +229,7 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
                 json_data = json.loads(data)
                 is_json = True
                 data_code = f"data = {json_data}\n"
-                data_code += f"data = json.dumps(data)\n"
+                data_code += f"// data = json.dumps(data)\n"
                 data_param = "json=data"
             except json.JSONDecodeError:
                 try:
