@@ -303,7 +303,7 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
         request_code += "\n    proxies=proxies,"
         request_code += "\n    verify=False\n)"
 
-        final_code = "import requests\nimport urllib3\nurllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)\n\n"
+        final_code = "import json\nimport requests\nimport urllib3\nurllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)\n\n"
         if headers:
             final_code += headers_code + "\n\n"
         if cookies_dict:
