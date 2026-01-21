@@ -6,10 +6,10 @@ import os, platform
 system = platform.system()
 if system == 'Windows':
     # 直接使用您提供的 Node.js 路径
-    NODE_PATH = "D:\\nvm-windows\\v16.18.1\\node.exe"
+    NODE_PATH = "C:\\ProgramFiles\\nvm\\v16.18.1\\node.exe"
 
     # 获取全局 npm 包路径
-    GLOBAL_NPM_PATH = "D:\\nvm-windows\\v16.18.1\\node_modules"
+    GLOBAL_NPM_PATH = "C:\\ProgramFiles\\nvm\\v16.18.1\\node_modules"
 elif system == 'Darwin':
     # 直接使用您提供的 Node.js 路径
     NODE_PATH = "/Users/yangxiao/.nvm/versions/node/v16.18.1/bin/node"

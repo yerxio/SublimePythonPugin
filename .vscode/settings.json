@@ -1,4 +1,5 @@
 {
+    "terminal.integrated.defaultProfile.windows": "Command Prompt", // windows配置-设置默认终端为 CMD
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python-envs.pythonProjects": []

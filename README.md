@@ -59,6 +59,12 @@
 # Linux: ~/.config/sublime-text/Packages/User
 ```
 
+### 给SublimeText中的python3.8.12安装模块
+```bash
+conda activate py3812
+pip install --target "C:\ProgramFiles\SublimeText4\Lib\python38" jsbeautifier
+```
+
 * 快捷键绑定
 
 配置快捷键. 可以参考给出的快捷键参考配置.
