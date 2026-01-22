@@ -1,6 +1,25 @@
 {
     "terminal.integrated.defaultProfile.windows": "Command Prompt", // windows配置-设置默认终端为 CMD
+    "code-runner.runInTerminal": true,
+    "code-runner.fileDirectoryAsCwd": true,
+    "code-runner.ignoreSelection": true,
+    "code-runner.executorMap": {
+        // $pythonPath 是一个魔法变量，它会自动读取你右下角选择的解释器路径
+        "python": "$pythonPath -u $fullFileName", 
+    },
+    "python.terminal.executeInFileDir": true,
+    "python.terminal.activateEnvironment": true, // 根据右下角自动激活终端环境
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "terminal.integrated.scrollback": 100000,
+    "workbench.colorCustomizations": {
+        // 当前命中：高饱和度绿色，高不透明度
+        "terminal.findMatchHighlightBackground": "#00ff00f0",
+        "terminal.findMatchHighlightBorder": "#00ff00f0",
+        // 其他待选：低饱和度蓝色，低不透明度
+        "terminal.findMatchBackground": "#8888ff44",
+        "terminal.findMatchBorder": "#8888ff44"
+    },
 }
+

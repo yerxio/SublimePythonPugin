@@ -1,16 +1,5 @@
 import sys
 import os
-
-# ==============================================================================
-# 【重要】请修改下面这行路径，指向你本机 Python 的 site-packages 目录
-# 否则 Sublime 无法加载 requests, Crypto, rich 等库
-# 例如 Windows: "C:/Users/你的用户名/AppData/Local/Programs/Python/Python39/Lib/site-packages"
-# 例如 Mac/Linux: "/usr/local/lib/python3.9/site-packages"
-# ==============================================================================
-site_packages_path = r"/usr/local/lib/python3.9/site-packages" 
-if site_packages_path not in sys.path:
-    sys.path.append(site_packages_path)
-
 import sublime
 import sublime_plugin
 import threading
@@ -22,13 +11,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, List
 
 
-
-import urllib3
 import requests
+import urllib3
 from Crypto.Cipher import AES
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from rich.console import Console # 仅引用，用于满足不改库的需求，实际渲染转为 HTML
 
 
 # ==============================================================================
@@ -297,93 +284,184 @@ class AESCrypto:
         return base64.b64encode(ct).decode("ascii")
 
 class PureAES:
+    """
+    纯 Python 实现的 AES 算法 (Rijndael)
+    支持 AES-128, 192, 256
+    模式: CBC
+    填充: PKCS7
+    """
     def __init__(self, key_words, iv_words):
+        # 接收 JS 风格的 words 数组
         self.key = self._words_to_bytes(key_words)
         self.iv = self._words_to_bytes(iv_words)
-        self.nb = 4; self.nk = len(self.key) // 4; self.nr = self.nk + 6
+        self.nb = 4  # Block size in words (32-bit)
+        
+        # 确定密钥长度 (Nk) 和 轮数 (Nr)
+        # AES-128: Nk=4, Nr=10
+        self.nk = len(self.key) // 4
+        self.nr = self.nk + 6
+        
+        # 预计算 S-Box 和 轮密钥
         self.s_box = self._generate_sbox()
         self.inv_s_box = [self.s_box.index(x) for x in range(256)]
         self.w = self._key_expansion()
+
+    # --- 辅助工具: Words 转 Bytes ---
     def _words_to_bytes(self, words):
+        """将 JS 的 32位整数数组转换为字节序列 (Big Endian)"""
         res = bytearray()
         for w in words:
+            # 处理 JS 可能的负数 (补码)
             w = w & 0xFFFFFFFF 
-            res.append((w >> 24) & 0xFF); res.append((w >> 16) & 0xFF); res.append((w >> 8) & 0xFF); res.append(w & 0xFF)
+            res.append((w >> 24) & 0xFF)
+            res.append((w >> 16) & 0xFF)
+            res.append((w >> 8) & 0xFF)
+            res.append(w & 0xFF)
         return list(res)
+
     def _bytes_to_words(self, bytes_data):
         words = []
         for i in range(0, len(bytes_data), 4):
-            val = (bytes_data[i] << 24) | (bytes_data[i+1] << 16) | (bytes_data[i+2] << 8) | bytes_data[i+3]
+            val = (bytes_data[i] << 24) | (bytes_data[i+1] << 16) | \
+                  (bytes_data[i+2] << 8) | bytes_data[i+3]
             words.append(val)
         return words
+
+    # --- AES 核心数学 ---
     def _generate_sbox(self):
+        # 生成标准 AES S-Box
         sbox = [0] * 256
-        p = 1; q = 1
-        def rotl8(x, shift): return ((x << shift) | (x >> (8 - shift))) & 0xFF
+        p = 1
+        q = 1
+        
+        def rotl8(x, shift):
+            return ((x << shift) | (x >> (8 - shift))) & 0xFF
+
         while True:
+            # 乘法逆元 (GF(2^8))
             p = p ^ (p << 1) ^ (0x1B if (p & 0x80) else 0)
             p &= 0xFF
-            q ^= (q << 1) ^ (q << 2) ^ (q << 4) ^ (0x09 if (q & 0x80) else 0)
+            q ^= (q << 1)
+            q ^= (q << 2)
+            q ^= (q << 4)
+            q ^= (0x09 if (q & 0x80) else 0)
             q &= 0xFF
             xformed = q ^ rotl8(q, 1) ^ rotl8(q, 2) ^ rotl8(q, 3) ^ rotl8(q, 4) ^ 0x63
             sbox[p] = xformed
             if p == 1: break
         sbox[0] = 0x63
         return sbox
+
     def _sub_word(self, word):
-        return (self.s_box[(word >> 24) & 0xFF] << 24) | (self.s_box[(word >> 16) & 0xFF] << 16) | (self.s_box[(word >> 8) & 0xFF] << 8) | (self.s_box[word & 0xFF])
-    def _rot_word(self, word): return ((word << 8) & 0xFFFFFFFF) | (word >> 24)
+        return (self.s_box[(word >> 24) & 0xFF] << 24) | \
+               (self.s_box[(word >> 16) & 0xFF] << 16) | \
+               (self.s_box[(word >> 8) & 0xFF] << 8) | \
+               (self.s_box[word & 0xFF])
+
+    def _rot_word(self, word):
+        return ((word << 8) & 0xFFFFFFFF) | (word >> 24)
+
     def _key_expansion(self):
+        # 密钥扩展算法
         w = [0] * (self.nb * (self.nr + 1))
+        
+        # 前 Nk 个字是原始密钥
         key_words = self._bytes_to_words(self.key)
-        for i in range(self.nk): w[i] = key_words[i]
+        for i in range(self.nk):
+            w[i] = key_words[i]
+            
         rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36]
+        
         for i in range(self.nk, self.nb * (self.nr + 1)):
             temp = w[i - 1]
-            if i % self.nk == 0: temp = self._sub_word(self._rot_word(temp)) ^ (rcon[(i // self.nk) - 1] << 24)
-            elif self.nk > 6 and i % self.nk == 4: temp = self._sub_word(temp)
+            if i % self.nk == 0:
+                temp = self._sub_word(self._rot_word(temp)) ^ (rcon[(i // self.nk) - 1] << 24)
+            elif self.nk > 6 and i % self.nk == 4:
+                temp = self._sub_word(temp)
             w[i] = w[i - self.nk] ^ temp
         return w
+
+    # --- AES 解密操作 (单个块) ---
     def _decrypt_block(self, block):
         state = [list(block[i:i+4]) for i in range(0, 16, 4)]
+        # 转置为状态矩阵 (AES 标准是列优先，但通常实现里行处理更方便，这里模拟标准状态)
         state = [list(x) for x in zip(*state)] 
+
         self._add_round_key(state, self.nr)
+
         for round in range(self.nr - 1, 0, -1):
-            self._shift_rows_inv(state); self._sub_bytes_inv(state); self._add_round_key(state, round); self._mix_columns_inv(state)
-        self._shift_rows_inv(state); self._sub_bytes_inv(state); self._add_round_key(state, 0)
+            self._shift_rows_inv(state)
+            self._sub_bytes_inv(state)
+            self._add_round_key(state, round)
+            self._mix_columns_inv(state)
+
+        self._shift_rows_inv(state)
+        self._sub_bytes_inv(state)
+        self._add_round_key(state, 0)
+
+        # 转置回线性
         output = []
         for r in range(4):
-            for c in range(4): output.append(state[c][r])
+            for c in range(4):
+                output.append(state[c][r])
         return output
+    
+    # --- AES 加密操作 (单个块) ---
     def _encrypt_block(self, block):
         state = [list(block[i:i+4]) for i in range(0, 16, 4)]
         state = [list(x) for x in zip(*state)]
+
         self._add_round_key(state, 0)
+        
         for round in range(1, self.nr):
-            self._sub_bytes(state); self._shift_rows(state); self._mix_columns(state); self._add_round_key(state, round)
-        self._sub_bytes(state); self._shift_rows(state); self._add_round_key(state, self.nr)
+            self._sub_bytes(state)
+            self._shift_rows(state)
+            self._mix_columns(state)
+            self._add_round_key(state, round)
+            
+        self._sub_bytes(state)
+        self._shift_rows(state)
+        self._add_round_key(state, self.nr)
+        
         output = []
         for r in range(4):
-            for c in range(4): output.append(state[c][r])
+            for c in range(4):
+                output.append(state[c][r])
         return output
+
+    # --- 变换函数 ---
     def _sub_bytes(self, state):
         for r in range(4):
-            for c in range(4): state[r][c] = self.s_box[state[r][c]]
+            for c in range(4):
+                state[r][c] = self.s_box[state[r][c]]
+
     def _sub_bytes_inv(self, state):
         for r in range(4):
-            for c in range(4): state[r][c] = self.inv_s_box[state[r][c]]
+            for c in range(4):
+                state[r][c] = self.inv_s_box[state[r][c]]
+
     def _shift_rows(self, state):
-        state[1] = state[1][1:] + state[1][:1]; state[2] = state[2][2:] + state[2][:2]; state[3] = state[3][3:] + state[3][:3]
+        state[1] = state[1][1:] + state[1][:1]
+        state[2] = state[2][2:] + state[2][:2]
+        state[3] = state[3][3:] + state[3][:3]
+
     def _shift_rows_inv(self, state):
-        state[1] = state[1][-1:] + state[1][:-1]; state[2] = state[2][-2:] + state[2][:-2]; state[3] = state[3][-3:] + state[3][:-3]
+        state[1] = state[1][-1:] + state[1][:-1]
+        state[2] = state[2][-2:] + state[2][:-2]
+        state[3] = state[3][-3:] + state[3][:-3]
+        
     def _mix_columns(self, state):
-        for c in range(4): col = [state[r][c] for r in range(4)]; self._mix_column(state, c, col)
+        for c in range(4):
+            col = [state[r][c] for r in range(4)]
+            self._mix_column(state, c, col)
+
     def _mix_column(self, state, c, col):
         def gmul(a, b):
             p = 0
             for _ in range(8):
                 if b & 1: p ^= a
-                high_bit_set = a & 0x80; a = (a << 1) & 0xFF; 
+                high_bit_set = a & 0x80
+                a = (a << 1) & 0xFF
                 if high_bit_set: a ^= 0x1b
                 b >>= 1
             return p
@@ -391,12 +469,14 @@ class PureAES:
         state[1][c] = col[0] ^ gmul(col[1], 2) ^ gmul(col[2], 3) ^ col[3]
         state[2][c] = col[0] ^ col[1] ^ gmul(col[2], 2) ^ gmul(col[3], 3)
         state[3][c] = gmul(col[0], 3) ^ col[1] ^ col[2] ^ gmul(col[3], 2)
+
     def _mix_columns_inv(self, state):
-        def gmul(a, b):
+        def gmul(a, b): # 同上，可以提取
             p = 0
             for _ in range(8):
                 if b & 1: p ^= a
-                high_bit_set = a & 0x80; a = (a << 1) & 0xFF; 
+                high_bit_set = a & 0x80
+                a = (a << 1) & 0xFF
                 if high_bit_set: a ^= 0x1b
                 b >>= 1
             return p
@@ -406,35 +486,60 @@ class PureAES:
             state[1][c] = gmul(col[0], 0x09) ^ gmul(col[1], 0x0e) ^ gmul(col[2], 0x0b) ^ gmul(col[3], 0x0d)
             state[2][c] = gmul(col[0], 0x0d) ^ gmul(col[1], 0x09) ^ gmul(col[2], 0x0e) ^ gmul(col[3], 0x0b)
             state[3][c] = gmul(col[0], 0x0b) ^ gmul(col[1], 0x0d) ^ gmul(col[2], 0x09) ^ gmul(col[3], 0x0e)
+
     def _add_round_key(self, state, round):
         for c in range(4):
-            w_idx = round * 4 + c; w_val = self.w[w_idx]; kb = [(w_val >> 24) & 0xFF, (w_val >> 16) & 0xFF, (w_val >> 8) & 0xFF, w_val & 0xFF]
-            for r in range(4): state[r][c] ^= kb[r]
+            # 获取对应列的 Round Key
+            w_idx = round * 4 + c
+            w_val = self.w[w_idx]
+            kb = [(w_val >> 24) & 0xFF, (w_val >> 16) & 0xFF, (w_val >> 8) & 0xFF, w_val & 0xFF]
+            for r in range(4):
+                state[r][c] ^= kb[r]
+
+    # --- CBC 模式与 PKCS7 填充 ---
     def decrypt_cbc(self, ciphertext_bytes):
         plain_bytes = []
         prev_block = list(self.iv)
+        
+        # 分块解密
         for i in range(0, len(ciphertext_bytes), 16):
             block = list(ciphertext_bytes[i:i+16])
-            if len(block) < 16: break
+            if len(block) < 16: break # Should not happen if padded correctly
+            
             decrypted_block = self._decrypt_block(block)
+            
+            # CBC XOR
             xored_block = [d ^ p for d, p in zip(decrypted_block, prev_block)]
             plain_bytes.extend(xored_block)
+            
             prev_block = block
+            
+        # Unpad (PKCS7)
         padding_len = plain_bytes[-1]
-        if padding_len > 16 or padding_len == 0: raise ValueError("Invalid padding")
+        if padding_len > 16 or padding_len == 0:
+            raise ValueError("Invalid padding")
         return bytes(plain_bytes[:-padding_len])
+
     def encrypt_cbc(self, plain_bytes):
+        # Pad (PKCS7)
         pad_len = 16 - (len(plain_bytes) % 16)
         plain_bytes = list(plain_bytes) + [pad_len] * pad_len
+        
         cipher_bytes = []
         prev_block = list(self.iv)
+        
         for i in range(0, len(plain_bytes), 16):
             block = plain_bytes[i:i+16]
+            # CBC XOR
             xored_block = [b ^ p for b, p in zip(block, prev_block)]
+            
             encrypted_block = self._encrypt_block(xored_block)
             cipher_bytes.extend(encrypted_block)
+            
             prev_block = encrypted_block
+            
         return bytes(cipher_bytes)
+
 
 class TokenService:
     def __init__(self):

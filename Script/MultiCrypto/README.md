@@ -55,7 +55,7 @@
 使用pip --target参数即可
 MacOS:
 ```bash
-   pip install --target "~/Library/Application Support/Sublime Text/Lib/python38" pycryptodome
+   pip install --target '/Users/yangxiao/Library/Application Support/Sublime Text/Lib/python38' requests
 ```
 # Linux/WSL 和其他平台类似，把目标目录换成对应的 `~/.config/sublime-text/Lib/python38` 或安装路径。
 
