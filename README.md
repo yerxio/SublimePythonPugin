@@ -60,9 +60,16 @@
 ```
 
 ### 给SublimeText中的python3.8.12安装模块
+Windows: 
 ```bash
 conda activate py3812
 pip install --target "C:\ProgramFiles\SublimeText4\Lib\python38" jsbeautifier
+```
+
+Mac:
+```bash
+conda activate py38
+pip install --target "~/Library/Application Support/Sublime Text/Lib/python38" jsbeautifier
 ```
 
 * 快捷键绑定
