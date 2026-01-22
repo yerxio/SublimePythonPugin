@@ -36,6 +36,7 @@
 | `UrlFormat` | 对 url 进行格式化，分离请求参数为字典以便对比。 |
 | `http_to_mitm` | 将http的响应(raw)转为mitmproxy构造的响应。 |
 | `YamlToJs` | 将yaml对象转为js对象(会自动去除非中英文的特殊字符!)。 |
+| `BaiduTranslateRich` | 对选中的文本使用百度的AI翻译. |
 
 # 插件安装方法
 

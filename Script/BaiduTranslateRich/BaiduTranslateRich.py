@@ -28,30 +28,78 @@ class SublimeHtmlBuilder:
         # 定义配色 (模拟原本的 Rich Theme)
         self.css = """
         <style>
-            body { font-family: "Segoe UI", "Roboto", sans-serif; font-size: 13px; line-height: 1.5; color: var(--foreground); background-color: var(--background); margin: 0; padding: 5px; }
-            h1 { font-size: 18px; margin: 0; padding: 5px 0; color: #a6e22e; font-weight: bold; }
+            body { 
+                font-family: system-ui, "Segoe UI", "Roboto", sans-serif; 
+                font-size: 13px; 
+                line-height: 1.5; 
+                /* 直接使用编辑器主题的背景和前景，保证100%对比度 */
+                color: var(--foreground); 
+                background-color: var(--background); 
+                margin: 0; 
+                padding: 10px; 
+            }
+            
+            /* 单词标题：保持绿色高亮 (如果不喜欢可以改成 var(--foreground)) */
+            h1 { 
+                font-size: 18px; 
+                margin: 0; 
+                padding: 5px 0; 
+                color: #a6e22e; 
+                font-weight: bold; 
+            }
+            
             .phonetic { font-size: 12px; color: #66d9ef; margin-left: 10px; }
             .trans-main { font-size: 15px; color: #f92672; font-weight: bold; margin: 5px 0; }
-            .simple-means { color: #888; font-size: 12px; margin-bottom: 10px; }
             
-            .panel { background-color: color(var(--background) blend(white 5%)); padding: 8px; border-radius: 4px; margin: 8px 0; border-left: 3px solid #ae81ff; }
-            .panel-title { font-weight: bold; color: #ae81ff; display: block; margin-bottom: 4px; }
+            /* 简明释义：改为标准前景色，不再变灰 */
+            .simple-means { 
+                color: var(--foreground); 
+                font-size: 12px; 
+                margin-bottom: 10px;
+                font-style: italic; /* 用斜体区分 */
+            }
             
-            .rule { display: block; height: 1px; background-color: #444; margin: 8px 0; }
+            /* ★关键修改：AI解析框去掉背景色，改用上下边框 */
+            .panel { 
+                background-color: var(--background); 
+                padding: 8px; 
+                margin: 10px 0; 
+                /* 使用紫色虚线边框来区分，而不是背景色块 */
+                border: 1px solid #ae81ff; 
+                border-radius: 4px;
+            }
+            .panel-title { font-weight: bold; color: #ae81ff; display: block; margin-bottom: 5px; border-bottom: 1px solid #ae81ff; padding-bottom: 3px; }
+            
+            /* 分割线 */
+            .rule { display: block; height: 1px; background-color: #555; margin: 10px 0; }
+            
+            /* 小标题：黄色 */
             .section-header { font-weight: bold; color: #e6db74; margin-top: 10px; display: block; }
             
-            .dict-box { margin-top: 5px; }
-            .dict-entry { margin-bottom: 8px; padding-left: 5px; }
-            .dict-trans { color: #66d9ef; font-weight: bold; }
-            .dict-def { color: #aaa; font-style: italic; }
-            .ex-en { color: #e6db74; display: block; margin-top: 2px; }
-            .ex-cn { color: #888; display: block; font-size: 11px; }
+            .dict-entry { margin-bottom: 10px; padding-left: 5px; border-left: 2px solid #444; }
             
-            .tag-collins { color: #fff; background-color: #f92672; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
-            .tag-oxford { color: #fff; background-color: #66d9ef; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+            .dict-trans { color: #66d9ef; font-weight: bold; }
+            
+            /* 词典定义：改为标准前景色 */
+            .dict-def { 
+                color: var(--foreground); 
+                font-style: italic; 
+            }
+            
+            /* 例句：英文黄色，中文标准色 */
+            .ex-en { color: #e6db74; display: block; margin-top: 3px; }
+            .ex-cn { 
+                color: var(--foreground); 
+                display: block; 
+                font-size: 11px; 
+                margin-bottom: 3px;
+            }
+            
+            .tag-collins { color: #fff; background-color: #f92672; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
+            .tag-oxford { color: #fff; background-color: #66d9ef; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
         </style>
-        """
-
+        """    
+    
     def add_header(self, query, phonetics, translation, simple_means):
         ph_str = ""
         if phonetics['en']: ph_str += f"英[{phonetics['en']}] "
