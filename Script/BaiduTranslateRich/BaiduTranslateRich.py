@@ -25,46 +25,38 @@ from urllib3.util.retry import Retry
 class SublimeHtmlBuilder:
     def __init__(self):
         self.html = []
-        # 定义配色 (模拟原本的 Rich Theme)
+        # ==================== 修复换行 + 高对比度 CSS ====================
         self.css = """
         <style>
             body { 
                 font-family: system-ui, "Segoe UI", "Roboto", sans-serif; 
                 font-size: 13px; 
                 line-height: 1.5; 
-                /* 直接使用编辑器主题的背景和前景，保证100%对比度 */
                 color: var(--foreground); 
                 background-color: var(--background); 
                 margin: 0; 
                 padding: 10px; 
+                /* ★★★ 核心修复：强制长文本自动换行 ★★★ */
+                word-wrap: break-word; 
+                white-space: normal;
             }
             
-            /* 单词标题：保持绿色高亮 (如果不喜欢可以改成 var(--foreground)) */
-            h1 { 
-                font-size: 18px; 
-                margin: 0; 
-                padding: 5px 0; 
-                color: #a6e22e; 
-                font-weight: bold; 
-            }
-            
+            h1 { font-size: 18px; margin: 0; padding: 5px 0; color: #a6e22e; font-weight: bold; }
             .phonetic { font-size: 12px; color: #66d9ef; margin-left: 10px; }
             .trans-main { font-size: 15px; color: #f92672; font-weight: bold; margin: 5px 0; }
             
-            /* 简明释义：改为标准前景色，不再变灰 */
             .simple-means { 
                 color: var(--foreground); 
                 font-size: 12px; 
                 margin-bottom: 10px;
-                font-style: italic; /* 用斜体区分 */
+                font-style: italic;
             }
             
-            /* ★关键修改：AI解析框去掉背景色，改用上下边框 */
+            /* AI 面板 */
             .panel { 
                 background-color: var(--background); 
                 padding: 8px; 
                 margin: 10px 0; 
-                /* 使用紫色虚线边框来区分，而不是背景色块 */
                 border: 1px solid #ae81ff; 
                 border-radius: 4px;
             }
@@ -72,39 +64,28 @@ class SublimeHtmlBuilder:
             
             /* 分割线 */
             .rule { display: block; height: 1px; background-color: #555; margin: 10px 0; }
-            
-            /* 小标题：黄色 */
             .section-header { font-weight: bold; color: #e6db74; margin-top: 10px; display: block; }
             
             .dict-entry { margin-bottom: 10px; padding-left: 5px; border-left: 2px solid #444; }
-            
             .dict-trans { color: #66d9ef; font-weight: bold; }
+            .dict-def { color: var(--foreground); font-style: italic; }
             
-            /* 词典定义：改为标准前景色 */
-            .dict-def { 
-                color: var(--foreground); 
-                font-style: italic; 
-            }
-            
-            /* 例句：英文黄色，中文标准色 */
-            .ex-en { color: #e6db74; display: block; margin-top: 3px; }
-            .ex-cn { 
-                color: var(--foreground); 
-                display: block; 
-                font-size: 11px; 
-                margin-bottom: 3px;
-            }
+            /* 例句块，使用 block 确保独占一行，促进换行 */
+            .ex-box { margin-top: 3px; display: block; }
+            .ex-en { color: #e6db74; display: inline; }
+            .ex-cn { color: var(--foreground); display: inline; font-size: 11px; opacity: 0.8; }
             
             .tag-collins { color: #fff; background-color: #f92672; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
             .tag-oxford { color: #fff; background-color: #66d9ef; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
         </style>
-        """    
-    
+        """
+
     def add_header(self, query, phonetics, translation, simple_means):
         ph_str = ""
         if phonetics['en']: ph_str += f"英[{phonetics['en']}] "
         if phonetics['am']: ph_str += f"美[{phonetics['am']}]"
         
+        # 使用 div 包裹确保 block 级显示
         html = f"""
         <h1>{query} <span class="phonetic">{ph_str}</span></h1>
         <div class="trans-main">{translation}</div>
@@ -115,13 +96,12 @@ class SublimeHtmlBuilder:
 
     def add_ai_panel(self, content):
         if not content: return
-        # 简单的 Markdown 处理
         content = content.replace("\n", "<br>")
         content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', content)
         html = f"""
         <div class="panel">
             <span class="panel-title">🤖 AI 深度解析</span>
-            {content}
+            <div>{content}</div>
         </div>
         """
         self.html.append(html)
@@ -129,25 +109,25 @@ class SublimeHtmlBuilder:
     def add_phrases_synonyms(self, phrases, synonyms):
         if not phrases and not synonyms: return
         
-        self.html.append('<table width="100%"><tr>')
+        # ★★★ 布局修改：移除 <table>，改用 <div> 上下堆叠 ★★★
+        # 表格布局在 Sublime 弹窗中非常容易导致换行失效，改为 div 就能正常换行了
         
-        # 词组
+        # 1. 常用词组
         if phrases:
-            self.html.append('<td valign="top" width="50%">')
+            self.html.append('<div>')
             self.html.append('<span class="section-header">💡 常用词组</span>')
             for p in phrases[:5]:
-                self.html.append(f'<div><span style="color:#66d9ef">{p.get("tit")[0]}</span>: {p.get("trans")[0]}</div>')
-            self.html.append('</td>')
+                # 强制每个词组为一块，防止连在一起
+                self.html.append(f'<div style="margin-bottom:2px"><span style="color:#66d9ef">{p.get("tit")[0]}</span>: {p.get("trans")[0]}</div>')
+            self.html.append('</div>')
 
-        # 同义词
+        # 2. 同义词
         if synonyms:
-            self.html.append('<td valign="top" width="50%">')
+            self.html.append('<div style="margin-top:5px">') # 增加间距
             self.html.append('<span class="section-header">🔄 同义词</span>')
             syn_str = ", ".join(synonyms[:10])
-            self.html.append(f'<div style="color:#ccc">{syn_str}</div>')
-            self.html.append('</td>')
-            
-        self.html.append('</tr></table>')
+            self.html.append(f'<div style="color:var(--foreground)">{syn_str}</div>')
+            self.html.append('</div>')
 
     def add_dictionaries(self, collins, oxford):
         if not collins and not oxford: return
@@ -159,15 +139,16 @@ class SublimeHtmlBuilder:
         if collins:
             for idx, item in enumerate(collins):
                 ex_html = ""
-                for ex_en, ex_cn in item['ex'][:2]: # 限制例句数
-                    ex_html += f'<span class="ex-en">» {ex_en}</span><span class="ex-cn">{ex_cn}</span>'
+                for ex_en, ex_cn in item['ex'][:2]:
+                    # 使用 span 拼接，利用 CSS 控制换行
+                    ex_html += f'<div class="ex-box"><span class="ex-en">» {ex_en}</span> <span class="ex-cn">{ex_cn}</span></div>'
                 
                 self.html.append(f"""
                 <div class="dict-entry">
                     <span class="tag-collins">C{idx+1}</span>
                     <span class="dict-trans">{item['trans']}</span>
-                    <span class="dict-def">{re.sub(r'<.*?>', '', item['def'])}</span>
-                    <div style="padding-left:15px">{ex_html}</div>
+                    <div class="dict-def">{re.sub(r'<.*?>', '', item['def'])}</div>
+                    <div style="padding-left:10px">{ex_html}</div>
                 </div>
                 """)
 
@@ -176,14 +157,13 @@ class SublimeHtmlBuilder:
             for idx, item in enumerate(oxford):
                 ex_html = ""
                 for ex_en, ex_cn in item['ex'][:2]:
-                    ex_html += f'<span class="ex-en">» {ex_en}</span>'
-                    if ex_cn: ex_html += f'<span class="ex-cn">{ex_cn}</span>'
+                    ex_html += f'<div class="ex-box"><span class="ex-en">» {ex_en}</span> <span class="ex-cn">{ex_cn}</span></div>'
                 
                 self.html.append(f"""
                 <div class="dict-entry">
                     <span class="tag-oxford">O{idx+1}</span>
                     <span class="dict-trans">{item['def']}</span>
-                    <div style="padding-left:15px">{ex_html}</div>
+                    <div style="padding-left:10px">{ex_html}</div>
                 </div>
                 """)
 
