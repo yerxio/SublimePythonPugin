@@ -1,7 +1,7 @@
 [
     {
         "command": "escape_replace",
-        "caption": "EscapeReplace: 内容去转义/JSON恢复",
+        "caption": "内容去转义/JSON恢复",
         "mnemonic": "E"
     }
 ] 

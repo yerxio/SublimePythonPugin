@@ -1,6 +1,6 @@
 [
     {
-        "caption": "BaiduTranslateRich",
+        "caption": "使用百度AI翻译",
         "command": "baidu_translate_rich",
     }
 ] 

@@ -2,8 +2,5 @@
     {
         "caption": "JS格式化",
         "command": "js_beautify",
-        "context": [
-            { "key": "selection_empty", "operator": "equal", "operand": false }
-        ]
     }
 ] 
