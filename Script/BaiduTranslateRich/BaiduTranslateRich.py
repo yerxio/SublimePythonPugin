@@ -23,129 +23,131 @@ from urllib3.util.retry import Retry
 class SublimeHtmlBuilder:
     def __init__(self):
         self.html = []
-        # ==================== 修复换行 + 高对比度 CSS ====================
         self.css = """
         <style>
-            body { 
-                font-family: system-ui, "Segoe UI", "Roboto", sans-serif; 
-                font-size: 13px; 
-                line-height: 1.5; 
-                color: var(--foreground); 
-                background-color: var(--background); 
-                margin: 0; 
-                padding: 10px; 
-                /* ★★★ 核心修复：强制长文本自动换行 ★★★ */
-                word-wrap: break-word; 
-                white-space: normal;
+            body {
+                font-family: system-ui, "Segoe UI", "Roboto", sans-serif;
+                font-size: 13px;
+                line-height: 1.5;
+                color: var(--foreground);
+                background-color: var(--background);
+                margin: 0;
+                padding: 10px;
             }
-            
+            p {
+                margin: 5px 0;
+                word-wrap: break-word;
+            }
             h1 { font-size: 18px; margin: 0; padding: 5px 0; color: #a6e22e; font-weight: bold; }
             .phonetic { font-size: 12px; color: #66d9ef; margin-left: 10px; }
             .trans-main { font-size: 15px; color: #f92672; font-weight: bold; margin: 5px 0; }
-            
-            .simple-means { 
-                color: var(--foreground); 
-                font-size: 12px; 
+            .simple-means {
+                color: var(--foreground);
+                font-size: 12px;
                 margin-bottom: 10px;
                 font-style: italic;
             }
-            
-            /* AI 面板 */
-            .panel { 
-                background-color: var(--background); 
-                padding: 8px; 
-                margin: 10px 0; 
-                border: 1px solid #ae81ff; 
+            .panel {
+                background-color: var(--background);
+                padding: 8px;
+                margin: 10px 0;
+                border: 1px solid #ae81ff;
                 border-radius: 4px;
             }
             .panel-title { font-weight: bold; color: #ae81ff; display: block; margin-bottom: 5px; border-bottom: 1px solid #ae81ff; padding-bottom: 3px; }
-            
-            /* 分割线 */
             .rule { display: block; height: 1px; background-color: #555; margin: 10px 0; }
             .section-header { font-weight: bold; color: #e6db74; margin-top: 10px; display: block; }
-            
             .dict-entry { margin-bottom: 10px; padding-left: 5px; border-left: 2px solid #444; }
             .dict-trans { color: #66d9ef; font-weight: bold; }
-            .dict-def { color: var(--foreground); font-style: italic; }
-            
-            /* 例句块，使用 block 确保独占一行，促进换行 */
-            .ex-box { margin-top: 3px; display: block; }
-            .ex-en { color: #e6db74; display: inline; }
-            .ex-cn { color: var(--foreground); display: inline; font-size: 11px; opacity: 0.8; }
-            
             .tag-collins { color: #fff; background-color: #f92672; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
             .tag-oxford { color: #fff; background-color: #66d9ef; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-right: 5px;}
         </style>
         """
 
+    def _wrap_text(self, text, max_chinese=22):
+        """按中文字符数量分行，超过 max_chinese 个中文字符就换行"""
+        if not text:
+            return text
+        lines = []
+        current = ""
+        count = 0
+        for ch in text:
+            current += ch
+            if '\u4e00' <= ch <= '\u9fff':
+                count += 1
+            if count >= max_chinese:
+                lines.append(current)
+                current = ""
+                count = 0
+        if current:
+            lines.append(current)
+        return "<br>".join(lines)
+
     def add_header(self, query, phonetics, translation, simple_means):
         ph_str = ""
         if phonetics['en']: ph_str += f"英[{phonetics['en']}] "
         if phonetics['am']: ph_str += f"美[{phonetics['am']}]"
-        
-        # 使用 div 包裹确保 block 级显示
+
+        wrapped = self._wrap_text(translation)
         html = f"""
         <h1>{query} <span class="phonetic">{ph_str}</span></h1>
-        <div class="trans-main">{translation}</div>
-        <div class="simple-means">{' '.join(simple_means)}</div>
+        <p class="trans-main">{wrapped}</p>
+        <p class="simple-means">{' '.join(simple_means)}</p>
         <div class="rule"></div>
         """
         self.html.append(html)
 
     def add_ai_panel(self, content):
         if not content: return
-        content = content.replace("\n", "<br>")
+        lines = content.split("\n")
+        wrapped_lines = [self._wrap_text(line) for line in lines]
+        content = "<br>".join(wrapped_lines)
         content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', content)
         html = f"""
         <div class="panel">
             <span class="panel-title">🤖 AI 深度解析</span>
-            <div>{content}</div>
+            <p>{content}</p>
         </div>
         """
         self.html.append(html)
 
     def add_phrases_synonyms(self, phrases, synonyms):
         if not phrases and not synonyms: return
-        
-        # ★★★ 布局修改：移除 <table>，改用 <div> 上下堆叠 ★★★
-        # 表格布局在 Sublime 弹窗中非常容易导致换行失效，改为 div 就能正常换行了
-        
+
         # 1. 常用词组
         if phrases:
             self.html.append('<div>')
             self.html.append('<span class="section-header">💡 常用词组</span>')
             for p in phrases[:5]:
-                # 强制每个词组为一块，防止连在一起
-                self.html.append(f'<div style="margin-bottom:2px"><span style="color:#66d9ef">{p.get("tit")[0]}</span>: {p.get("trans")[0]}</div>')
+                self.html.append(f'<p style="margin:2px 0"><span style="color:#66d9ef">{p.get("tit")[0]}</span>: {p.get("trans")[0]}</p>')
             self.html.append('</div>')
 
         # 2. 同义词
         if synonyms:
-            self.html.append('<div style="margin-top:5px">') # 增加间距
+            self.html.append('<div style="margin-top:5px">')
             self.html.append('<span class="section-header">🔄 同义词</span>')
             syn_str = ", ".join(synonyms[:10])
-            self.html.append(f'<div style="color:var(--foreground)">{syn_str}</div>')
+            self.html.append(f'<p>{syn_str}</p>')
             self.html.append('</div>')
 
     def add_dictionaries(self, collins, oxford):
         if not collins and not oxford: return
-        
+
         self.html.append('<div class="rule"></div>')
         self.html.append('<span class="section-header">📚 权威词典</span>')
-        
+
         # 柯林斯
         if collins:
             for idx, item in enumerate(collins):
                 ex_html = ""
                 for ex_en, ex_cn in item['ex'][:2]:
-                    # 使用 span 拼接，利用 CSS 控制换行
-                    ex_html += f'<div class="ex-box"><span class="ex-en">» {ex_en}</span> <span class="ex-cn">{ex_cn}</span></div>'
-                
+                    ex_html += f'<p style="margin:2px 0">» {ex_en} {ex_cn}</p>'
+
                 self.html.append(f"""
                 <div class="dict-entry">
                     <span class="tag-collins">C{idx+1}</span>
                     <span class="dict-trans">{item['trans']}</span>
-                    <div class="dict-def">{re.sub(r'<.*?>', '', item['def'])}</div>
+                    <p>{re.sub(r'<.*?>', '', item['def'])}</p>
                     <div style="padding-left:10px">{ex_html}</div>
                 </div>
                 """)
@@ -155,8 +157,8 @@ class SublimeHtmlBuilder:
             for idx, item in enumerate(oxford):
                 ex_html = ""
                 for ex_en, ex_cn in item['ex'][:2]:
-                    ex_html += f'<div class="ex-box"><span class="ex-en">» {ex_en}</span> <span class="ex-cn">{ex_cn}</span></div>'
-                
+                    ex_html += f'<p style="margin:2px 0">» {ex_en} {ex_cn}</p>'
+
                 self.html.append(f"""
                 <div class="dict-entry">
                     <span class="tag-oxford">O{idx+1}</span>
@@ -703,24 +705,26 @@ class FanYi:
 
 class BaiduTranslateRichCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        # 获取选中文本
         selections = self.view.sel()
         query = ""
+        location = -1
         for region in selections:
             if not region.empty():
                 query = self.view.substr(region).strip()
+                location = region.begin()
                 break
-        
+
         if not query:
-            # 如果没选中文本，尝试获取光标下的单词
             region = self.view.word(selections[0])
             query = self.view.substr(region).strip()
+            location = region.begin()
 
         if not query:
             self.view.window().status_message("BaiduTranslate: No text selected")
             return
 
         self.view.window().status_message(f"Translating: {query} ...")
+        self.popup_location = location
         
         # 异步运行，避免阻塞 Sublime 主界面
         threading.Thread(target=self.run_thread, args=(query,)).start()
@@ -748,8 +752,9 @@ class BaiduTranslateRichCommand(sublime_plugin.TextCommand):
 
     def show_popup(self, html):
         self.view.show_popup(
-            html, 
-            max_width=800, 
-            max_height=600,
+            html,
+            location=getattr(self, 'popup_location', -1),
+            max_width=600,
+            max_height=500,
             flags=sublime.COOPERATE_WITH_AUTO_COMPLETE
         )
