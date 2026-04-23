@@ -6,7 +6,8 @@ import json
 class JsonToDictCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         # 获取所有选中的文本区域
-        selections = [self.view.substr(region) for region in self.view.sel() if not region.empty()]
+        selected_regions = [region for region in self.view.sel() if not region.empty()]
+        selections = [self.view.substr(region) for region in selected_regions]
         
         if not selections:
             sublime.error_message("请先选择要转换的JSON文本")
@@ -29,11 +30,19 @@ class JsonToDictCommand(sublime_plugin.TextCommand):
             
             # 创建新窗口显示结果
             self._show_in_new_window(content, "JSON ↔ Python Dict 对比")
+            self._clear_selection_after_success(selected_regions[0])
             
         except json.JSONDecodeError as e:
             sublime.error_message("JSON 解析错误: {}".format(e))
         except Exception as e:
             sublime.error_message("发生错误: {}".format(e))
+
+    def _clear_selection_after_success(self, first_region):
+        """转换成功后，取消原选区，只保留第一个选区起点处的光标"""
+        caret_point = first_region.begin()
+        selection = self.view.sel()
+        selection.clear()
+        selection.add(sublime.Region(caret_point, caret_point))
 
     def _format_json(self, json_str):
         """格式化JSON字符串"""
@@ -80,6 +89,8 @@ class JsonToDictCommand(sublime_plugin.TextCommand):
         
         # 设置内容
         new_window.run_command('append', {'characters': content})
+        new_window.run_command("fold_by_level", {"level": 1})
+        new_window.run_command("move_to", {"to": "bof"})
         
         # 设置标题
         new_window.set_name(title)
