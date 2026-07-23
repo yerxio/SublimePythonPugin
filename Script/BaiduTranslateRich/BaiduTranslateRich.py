@@ -546,5 +546,5 @@ class BaiduTranslateRichCommand(sublime_plugin.TextCommand):
             location=getattr(self, 'popup_location', -1),
             max_width=600,
             max_height=500,
-            flags=sublime.COOPERATE_WITH_AUTO_COMPLETE
+            flags=0
         )
