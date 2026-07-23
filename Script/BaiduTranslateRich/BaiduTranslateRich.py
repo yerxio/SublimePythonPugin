@@ -3,17 +3,17 @@ import sublime_plugin
 import threading
 import json
 import base64
+import hashlib
+import struct
 import time
+import urllib.parse
 import re
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List
 
 
 import requests
-import urllib3
 from Crypto.Cipher import AES
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+from Crypto.Util.Padding import pad
 
 
 # ==============================================================================
@@ -292,412 +292,192 @@ class BaiduFullParser:
         return self.html_builder.get_full_html()
 
 # ==============================================================================
-#  AESCrypto, PureAES, TokenService (原本的代码，未修改)
+#  BaiduTranslator (使用 req.py 的翻译请求与 ACS Token 逻辑)
 # ==============================================================================
 
-class AESCrypto:
-    @staticmethod
-    def pkcs7_pad(data: bytes, block_size: int = 16) -> bytes:
-        pad_len = block_size - (len(data) % block_size)
-        return data + bytes([pad_len]) * pad_len
-    @staticmethod
-    def aes_cbc_pkcs7_encrypt_base64(plaintext: str, key_str: str, iv_str: str, encoding: str = "utf-8") -> str:
-        key = key_str.encode(encoding)
-        iv = iv_str.encode(encoding)
-        if len(key) not in (16, 24, 32): raise ValueError(f"AES key must be 16/24/32 bytes, got {len(key)}")
-        if len(iv) != 16: raise ValueError(f"IV must be 16 bytes, got {len(iv)}")
-        cipher = AES.new(key, AES.MODE_CBC, iv=iv)
-        padded = AESCrypto.pkcs7_pad(plaintext.encode(encoding), 16)
-        ct = cipher.encrypt(padded)
-        return base64.b64encode(ct).decode("ascii")
-
-class PureAES:
-    """
-    纯 Python 实现的 AES 算法 (Rijndael)
-    支持 AES-128, 192, 256
-    模式: CBC
-    填充: PKCS7
-    """
-    def __init__(self, key_words, iv_words):
-        # 接收 JS 风格的 words 数组
-        self.key = self._words_to_bytes(key_words)
-        self.iv = self._words_to_bytes(iv_words)
-        self.nb = 4  # Block size in words (32-bit)
-        
-        # 确定密钥长度 (Nk) 和 轮数 (Nr)
-        # AES-128: Nk=4, Nr=10
-        self.nk = len(self.key) // 4
-        self.nr = self.nk + 6
-        
-        # 预计算 S-Box 和 轮密钥
-        self.s_box = self._generate_sbox()
-        self.inv_s_box = [self.s_box.index(x) for x in range(256)]
-        self.w = self._key_expansion()
-
-    # --- 辅助工具: Words 转 Bytes ---
-    def _words_to_bytes(self, words):
-        """将 JS 的 32位整数数组转换为字节序列 (Big Endian)"""
-        res = bytearray()
-        for w in words:
-            # 处理 JS 可能的负数 (补码)
-            w = w & 0xFFFFFFFF 
-            res.append((w >> 24) & 0xFF)
-            res.append((w >> 16) & 0xFF)
-            res.append((w >> 8) & 0xFF)
-            res.append(w & 0xFF)
-        return list(res)
-
-    def _bytes_to_words(self, bytes_data):
-        words = []
-        for i in range(0, len(bytes_data), 4):
-            val = (bytes_data[i] << 24) | (bytes_data[i+1] << 16) | \
-                  (bytes_data[i+2] << 8) | bytes_data[i+3]
-            words.append(val)
-        return words
-
-    # --- AES 核心数学 ---
-    def _generate_sbox(self):
-        # 生成标准 AES S-Box
-        sbox = [0] * 256
-        p = 1
-        q = 1
-        
-        def rotl8(x, shift):
-            return ((x << shift) | (x >> (8 - shift))) & 0xFF
-
-        while True:
-            # 乘法逆元 (GF(2^8))
-            p = p ^ (p << 1) ^ (0x1B if (p & 0x80) else 0)
-            p &= 0xFF
-            q ^= (q << 1)
-            q ^= (q << 2)
-            q ^= (q << 4)
-            q ^= (0x09 if (q & 0x80) else 0)
-            q &= 0xFF
-            xformed = q ^ rotl8(q, 1) ^ rotl8(q, 2) ^ rotl8(q, 3) ^ rotl8(q, 4) ^ 0x63
-            sbox[p] = xformed
-            if p == 1: break
-        sbox[0] = 0x63
-        return sbox
-
-    def _sub_word(self, word):
-        return (self.s_box[(word >> 24) & 0xFF] << 24) | \
-               (self.s_box[(word >> 16) & 0xFF] << 16) | \
-               (self.s_box[(word >> 8) & 0xFF] << 8) | \
-               (self.s_box[word & 0xFF])
-
-    def _rot_word(self, word):
-        return ((word << 8) & 0xFFFFFFFF) | (word >> 24)
-
-    def _key_expansion(self):
-        # 密钥扩展算法
-        w = [0] * (self.nb * (self.nr + 1))
-        
-        # 前 Nk 个字是原始密钥
-        key_words = self._bytes_to_words(self.key)
-        for i in range(self.nk):
-            w[i] = key_words[i]
-            
-        rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36]
-        
-        for i in range(self.nk, self.nb * (self.nr + 1)):
-            temp = w[i - 1]
-            if i % self.nk == 0:
-                temp = self._sub_word(self._rot_word(temp)) ^ (rcon[(i // self.nk) - 1] << 24)
-            elif self.nk > 6 and i % self.nk == 4:
-                temp = self._sub_word(temp)
-            w[i] = w[i - self.nk] ^ temp
-        return w
-
-    # --- AES 解密操作 (单个块) ---
-    def _decrypt_block(self, block):
-        state = [list(block[i:i+4]) for i in range(0, 16, 4)]
-        # 转置为状态矩阵 (AES 标准是列优先，但通常实现里行处理更方便，这里模拟标准状态)
-        state = [list(x) for x in zip(*state)] 
-
-        self._add_round_key(state, self.nr)
-
-        for round in range(self.nr - 1, 0, -1):
-            self._shift_rows_inv(state)
-            self._sub_bytes_inv(state)
-            self._add_round_key(state, round)
-            self._mix_columns_inv(state)
-
-        self._shift_rows_inv(state)
-        self._sub_bytes_inv(state)
-        self._add_round_key(state, 0)
-
-        # 转置回线性
-        output = []
-        for r in range(4):
-            for c in range(4):
-                output.append(state[c][r])
-        return output
-    
-    # --- AES 加密操作 (单个块) ---
-    def _encrypt_block(self, block):
-        state = [list(block[i:i+4]) for i in range(0, 16, 4)]
-        state = [list(x) for x in zip(*state)]
-
-        self._add_round_key(state, 0)
-        
-        for round in range(1, self.nr):
-            self._sub_bytes(state)
-            self._shift_rows(state)
-            self._mix_columns(state)
-            self._add_round_key(state, round)
-            
-        self._sub_bytes(state)
-        self._shift_rows(state)
-        self._add_round_key(state, self.nr)
-        
-        output = []
-        for r in range(4):
-            for c in range(4):
-                output.append(state[c][r])
-        return output
-
-    # --- 变换函数 ---
-    def _sub_bytes(self, state):
-        for r in range(4):
-            for c in range(4):
-                state[r][c] = self.s_box[state[r][c]]
-
-    def _sub_bytes_inv(self, state):
-        for r in range(4):
-            for c in range(4):
-                state[r][c] = self.inv_s_box[state[r][c]]
-
-    def _shift_rows(self, state):
-        state[1] = state[1][1:] + state[1][:1]
-        state[2] = state[2][2:] + state[2][:2]
-        state[3] = state[3][3:] + state[3][:3]
-
-    def _shift_rows_inv(self, state):
-        state[1] = state[1][-1:] + state[1][:-1]
-        state[2] = state[2][-2:] + state[2][:-2]
-        state[3] = state[3][-3:] + state[3][:-3]
-        
-    def _mix_columns(self, state):
-        for c in range(4):
-            col = [state[r][c] for r in range(4)]
-            self._mix_column(state, c, col)
-
-    def _mix_column(self, state, c, col):
-        def gmul(a, b):
-            p = 0
-            for _ in range(8):
-                if b & 1: p ^= a
-                high_bit_set = a & 0x80
-                a = (a << 1) & 0xFF
-                if high_bit_set: a ^= 0x1b
-                b >>= 1
-            return p
-        state[0][c] = gmul(col[0], 2) ^ gmul(col[1], 3) ^ col[2] ^ col[3]
-        state[1][c] = col[0] ^ gmul(col[1], 2) ^ gmul(col[2], 3) ^ col[3]
-        state[2][c] = col[0] ^ col[1] ^ gmul(col[2], 2) ^ gmul(col[3], 3)
-        state[3][c] = gmul(col[0], 3) ^ col[1] ^ col[2] ^ gmul(col[3], 2)
-
-    def _mix_columns_inv(self, state):
-        def gmul(a, b): # 同上，可以提取
-            p = 0
-            for _ in range(8):
-                if b & 1: p ^= a
-                high_bit_set = a & 0x80
-                a = (a << 1) & 0xFF
-                if high_bit_set: a ^= 0x1b
-                b >>= 1
-            return p
-        for c in range(4):
-            col = [state[r][c] for r in range(4)]
-            state[0][c] = gmul(col[0], 0x0e) ^ gmul(col[1], 0x0b) ^ gmul(col[2], 0x0d) ^ gmul(col[3], 0x09)
-            state[1][c] = gmul(col[0], 0x09) ^ gmul(col[1], 0x0e) ^ gmul(col[2], 0x0b) ^ gmul(col[3], 0x0d)
-            state[2][c] = gmul(col[0], 0x0d) ^ gmul(col[1], 0x09) ^ gmul(col[2], 0x0e) ^ gmul(col[3], 0x0b)
-            state[3][c] = gmul(col[0], 0x0b) ^ gmul(col[1], 0x0d) ^ gmul(col[2], 0x09) ^ gmul(col[3], 0x0e)
-
-    def _add_round_key(self, state, round):
-        for c in range(4):
-            # 获取对应列的 Round Key
-            w_idx = round * 4 + c
-            w_val = self.w[w_idx]
-            kb = [(w_val >> 24) & 0xFF, (w_val >> 16) & 0xFF, (w_val >> 8) & 0xFF, w_val & 0xFF]
-            for r in range(4):
-                state[r][c] ^= kb[r]
-
-    # --- CBC 模式与 PKCS7 填充 ---
-    def decrypt_cbc(self, ciphertext_bytes):
-        plain_bytes = []
-        prev_block = list(self.iv)
-        
-        # 分块解密
-        for i in range(0, len(ciphertext_bytes), 16):
-            block = list(ciphertext_bytes[i:i+16])
-            if len(block) < 16: break # Should not happen if padded correctly
-            
-            decrypted_block = self._decrypt_block(block)
-            
-            # CBC XOR
-            xored_block = [d ^ p for d, p in zip(decrypted_block, prev_block)]
-            plain_bytes.extend(xored_block)
-            
-            prev_block = block
-            
-        # Unpad (PKCS7)
-        padding_len = plain_bytes[-1]
-        if padding_len > 16 or padding_len == 0:
-            raise ValueError("Invalid padding")
-        return bytes(plain_bytes[:-padding_len])
-
-    def encrypt_cbc(self, plain_bytes):
-        # Pad (PKCS7)
-        pad_len = 16 - (len(plain_bytes) % 16)
-        plain_bytes = list(plain_bytes) + [pad_len] * pad_len
-        
-        cipher_bytes = []
-        prev_block = list(self.iv)
-        
-        for i in range(0, len(plain_bytes), 16):
-            block = plain_bytes[i:i+16]
-            # CBC XOR
-            xored_block = [b ^ p for b, p in zip(block, prev_block)]
-            
-            encrypted_block = self._encrypt_block(xored_block)
-            cipher_bytes.extend(encrypted_block)
-            
-            prev_block = encrypted_block
-            
-        return bytes(cipher_bytes)
+PAGE_URL = "https://fanyi.baidu.com/mtpe-individual/multimodal"
+API_URL = "https://fanyi.baidu.com/ait/text/translateIncognitoAi"
+SOURCE_LANGUAGE = "en"
+TARGET_LANGUAGE = "zh"
+USER_AGENT = (
+    "Mozilla/5.0 (darwin) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) jsdom/29.1.1"
+)
+PROXY = None
+PAGE_TIMEOUT = 30
+API_TIMEOUT = 120
 
 
-class TokenService:
-    def __init__(self):
-        self.key_words = [1835101539, 1802331489, 1768519525, 1769431399]
-        self.iv_words = [825373492, 892745528, 943142453, 875770417]
-        self.aes = PureAES(self.key_words, self.iv_words)
-    def generate_token(self, data: dict) -> str:
-        try:
-            json_str = json.dumps(data, separators=(',', ':'))
-            encrypted_bytes = self.aes.encrypt_cbc(json_str.encode('utf-8'))
-            b64_cipher = base64.b64encode(encrypted_bytes).decode('utf-8')
-            ts1 = int(time.time() * 1000)
-            ts2 = ts1 + 224040 
-            return f"{ts1}_{ts2}_{b64_cipher}"
-        except Exception as e:
-            print(f"Generate Error: {e}"); return ""
+class BaiduTranslator:
+    ACS_BUILD_PREFIX = "1784707207250"
+    ACS_CHANNEL_SALT = "b71c2fa3ed82f"
+    ACS_KEY_MATERIAL = b"awqwsayqqyeuikey"
+    ACS_FIXED_IV = b"1234567887654321"
+    ACS_D0_PREFIX = "if2glnrf99c"
+    ACS_HFE = "300_7ex98"
+    ACS_VERSION = "2.5.2.1"
 
-# ==============================================================================
-#  Client (原本的代码，未修改)
-# ==============================================================================
+    @classmethod
+    def _page_url(cls, text: str) -> str:
+        params = urllib.parse.urlencode(
+            {
+                "query": text,
+                "lang": f"{SOURCE_LANGUAGE}2{TARGET_LANGUAGE}",
+            }
+        )
+        return f"{PAGE_URL}?{params}"
 
-@dataclass
-class FanYiConfig:
-    proxies: Optional[Dict[str, str]] = None
-    verify_tls: bool = False
-    timeout: int = 15
-    abdr_key: str = "CF91224D552D48FC"
-    abdr_iv: str = "636014d173e04409"
-    home_url: str = "https://fanyi.baidu.com/"
-    abdr_url: str = "https://miao.baidu.com/abdr"
-    translate_url: str = "https://fanyi.baidu.com/ait/text/translateIncognitoAi"
+    @classmethod
+    def _base32(cls, number: int) -> str:
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        result = ""
+        while number:
+            result = digits[number % 32] + result
+            number //= 32
+        return result or "0"
 
-class FanYi:
-    UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    CH_UA = "\"Google Chrome\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\""
+    @classmethod
+    def _msgpack(cls, value: Any) -> bytes:
+        if isinstance(value, bool):
+            return b"\xc3" if value else b"\xc2"
 
-    def __init__(self, cfg: FanYiConfig):
-        self.cfg = cfg
-        if not cfg.verify_tls: urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        self.session = requests.Session()
-        self.session.verify = cfg.verify_tls
-        if cfg.proxies: self.session.proxies = cfg.proxies
-        retry = Retry(total=3, backoff_factor=0.5, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET", "POST"), raise_on_status=False)
-        adapter = HTTPAdapter(max_retries=retry)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
-        self.base_headers = {
-            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Cache-Control": "no-cache", "Pragma": "no-cache", "Connection": "keep-alive",
-            "User-Agent": self.UA, "sec-ch-ua": self.CH_UA, "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": "\"macOS\"",
+        if isinstance(value, str):
+            encoded = value.encode("utf-8")
+            size = len(encoded)
+            if size < 32:
+                return bytes([0xA0 + size]) + encoded
+            if size <= 0xFF:
+                return b"\xd9" + bytes([size]) + encoded
+            raise ValueError("ACS string field exceeds the supported size")
+
+        if isinstance(value, float):
+            return b"\xcb" + struct.pack(">d", value)
+
+        if isinstance(value, int):
+            if 0 <= value <= 0x7F:
+                return bytes([value])
+            if value <= 0xFF:
+                return b"\xcc" + bytes([value])
+            if value <= 0xFFFF:
+                return b"\xcd" + struct.pack(">H", value)
+            raise ValueError("ACS integer field exceeds the supported range")
+
+        if isinstance(value, dict):
+            size = len(value)
+            prefix = bytes([0x80 + size]) if size < 16 else b"\xde" + struct.pack(">H", size)
+            return prefix + b"".join(
+                cls._msgpack(key) + cls._msgpack(item)
+                for key, item in value.items()
+            )
+
+        raise TypeError(f"Unsupported ACS field type: {type(value).__name__}")
+
+    @classmethod
+    def _transform(cls, data: bytes, seed: str) -> bytes:
+        transformed = bytearray(data)
+        step = (len(transformed) + 59) // 60
+        for seed_index, index in enumerate(range(0, len(transformed), step)):
+            value = transformed[index] ^ ord(seed[seed_index % len(seed)])
+            if index & 1:
+                mixed = ((~value) & 0xFF) ^ 0x55
+            else:
+                mixed = (value * 7) & 0xFF
+            transformed[index] = ((mixed << 3) | (mixed >> 5)) & 0xFF
+        return bytes(transformed)
+
+    @classmethod
+    def _acs_token(cls, baiduid: str, client_ts: int) -> str:
+        d0 = f"{cls.ACS_D0_PREFIX}{cls._base32(client_ts)}"
+        d78_source = f"{d0}___false_0__0"
+        fields = {
+            "d0": d0,
+            "ua": USER_AGENT,
+            "baiduid": baiduid,
+            "platform": "",
+            "d23": 2,
+            "hf": "",
+            "h0": False,
+            "h1": 0,
+            "d4": 1,
+            "d5": 0,
+            "d432": 0,
+            "d437": 0,
+            "hfe": cls.ACS_HFE,
+            "d1": "",
+            "d11": 0,
+            "d12": "71,6160",
+            "d13": "298,232,297,320",
+            "d2": 0,
+            "d8": 0,
+            "d78": int(hashlib.sha1(d78_source.encode()).hexdigest()[:4], 16),
+            "d420": 0,
+            "clientTs": float(client_ts),
+            "extra": "",
+            "d7": 0,
+            "d9": "\u200c",
+            "odkp": 0,
+            "version": cls.ACS_VERSION,
         }
-        self.ab_sr: Optional[str] = None
-        self.BAIDUID: Optional[str] = None
+        seed_source = f"{cls.ACS_BUILD_PREFIX}{client_ts}{cls.ACS_CHANNEL_SALT}"
+        seed = hashlib.sha1(seed_source.encode()).hexdigest()
+        plaintext = cls._transform(cls._msgpack(fields), seed)
+        key = cls._transform(cls.ACS_KEY_MATERIAL, seed)
+        encrypted = AES.new(key, AES.MODE_CBC, cls.ACS_FIXED_IV).encrypt(
+            pad(plaintext, AES.block_size)
+        )
+        payload = base64.b64encode(encrypted).decode()
+        return f"P1_{cls.ACS_BUILD_PREFIX}_{client_ts}_{payload}"
 
-    @staticmethod
-    def now_ms() -> int: return int(time.time() * 1000)
-    @staticmethod
-    def now_s() -> int: return int(time.time())
-    @staticmethod
-    def _json_compact(obj: Any) -> str: return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
-
-    def _request(self, method: str, url: str, *, headers: Optional[Dict[str, str]] = None, params: Optional[Dict[str, Any]] = None, json_body: Any = None, data: Any = None) -> requests.Response:
-        h = dict(self.base_headers)
-        if headers: h.update(headers)
-        resp = self.session.request(method=method, url=url, headers=h, params=params, json=json_body, data=data, timeout=self.cfg.timeout)
-        if resp.status_code >= 400:
-            snippet = (resp.text or "")[:400]
-            raise RuntimeError(f"HTTP {resp.status_code} {method} {url} => {snippet}")
-        return resp
-
-    def _refresh_cookie_cache(self, resp: requests.Response) -> None:
-        self.BAIDUID = resp.cookies.get("BAIDUID") or self.session.cookies.get("BAIDUID")
-        self.ab_sr = resp.cookies.get("ab_sr") or self.session.cookies.get("ab_sr")
-
-    def fetch_home(self) -> None:
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1", "Upgrade-Insecure-Requests": "1",
+    @classmethod
+    def _request_body(cls, text: str, client_ts: int) -> Dict[str, Any]:
+        return {
+            "needNewlineCombine": False,
+            "disableCache": False,
+            "isAi": True,
+            "sseStartTime": client_ts,
+            "query": text,
+            "from": SOURCE_LANGUAGE,
+            "to": TARGET_LANGUAGE,
+            "corpusIds": [],
+            "needPhonetic": True,
+            "domain": "ai_advanced",
+            "detectLang": "",
+            "isIncognitoAI": True,
+            "milliTimestamp": client_ts,
         }
-        resp = self._request("GET", self.cfg.home_url, headers=headers)
-        self._refresh_cookie_cache(resp)
 
-    def abdr(self) -> str:
-        ms = self.now_ms()
-        s = self.now_s()
-        raw_payload = {
-            '1': 1, '3': '835bf444cee57a2ae66f96fd9929791cf5461dfa', '4': 30, '5': '1470x956', '6': '1470x864', '7': ',', '8': 'PDF%20Viewer,Chrome%20PDF%20Viewer,Chromium%20PDF%20Viewer,Microsoft%20Edge%20PDF%20Viewer,WebKit%20built-in%20PDF',
-            '9': 'Portable%20Document%20Format,Portable%20Document%20Format', '11': 1, '12': 1, '13': True, '14': -480, '15': 'zh-CN', '16': '', '17': '1,0,1,1,1,1', '18': 2, '19': 8, '20': 0, '21': 'null',
-            '22': 'Gecko,20030107,Google Inc.,,Mozilla,Netscape,MacIntel', '23': '0,0,0', '24': 1, '25': 'Google Inc. (Apple),ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)',
-            '27': self.UA, '28': 'false,false', '29': 'true,true,true', '30': 0, '31': 8, '32': 21828, '34': 'MacIntel', '35': 'false,true', '41': True, '42': None, '43': None, '44': 0.8, '58': '',
-            '63': True, '64': False, '69': 0, '70': 0, '72': 'zh-CN,en-US,en,zh', '73': '', '76': 0, '78': '79333aac6c32222583565d2305f3187cbeb35c23_5e472982af2e089cc3f30269aaa87fb241a42f59fd34560d1573264bf2516b52',
-            '79': '0,0,0,0,0', '80': '0,0,0,0,0', '81': 1, '82': 'c5f50648fba26b097a0f33a5514f7da43104a8a3', '85': '6d8dc718c4fdcfbb62c617efcfad60278d20098f', '101': 'e04502803d96c8ffd44ae48307cfccb3b3af641f',
-            '103': ms, '1160': str(s), '106': 2060, '107': '3.16.2.1', '108': 'https://fanyi.baidu.com/mtpe-individual/transText#/', '109': '', '112': '', '113': '', '114': 'pc_mtpe', '115': '',
-            '116': '4b75a21925ff6d56d451f3e09e105d9f255ddb2d', '130': '[]', "136": "[{\"x\":0,\"y\":0,\"w\":0,\"h\":0}]", '198': 33, '199': '', '200': 1, '300': 'ed45136a', '303': '500_timeout', '305': -2, '431': 0, '432': 1, '433': '', '434': 0, '435': 0,
-        }
-        plaintext = self._json_compact(raw_payload)
-        cipher_b64 = AESCrypto.aes_cbc_pkcs7_encrypt_base64(plaintext, self.cfg.abdr_key, self.cfg.abdr_iv)
-        body = {'data': cipher_b64, 'key_id': '6e75c85adea0454a', 'enc': 2}
-        headers = { "Accept": "*/*", "Content-Type": "text/plain;charset=UTF-8", "Origin": "https://fanyi.baidu.com", "Referer": "https://fanyi.baidu.com/", "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site", }
-        params = {"_o": "https://fanyi.baidu.com"}
-        resp = self._request("POST", self.cfg.abdr_url, headers=headers, params=params, json_body=body)
-        self._refresh_cookie_cache(resp)
-        if not self.ab_sr:
-            snippet = (resp.text or "")[:300]
-            raise RuntimeError(f"abdr ok but ab_sr missing. resp={snippet}")
-        return self.ab_sr
+    @classmethod
+    def translate(cls, text: str) -> str:
+        referer = cls._page_url(text)
 
-    def translate(self, query: str = "hello", src: str = "en", dst: str = "zh") -> str:
-        if not self.ab_sr: raise RuntimeError("ab_sr is missing, call abdr() first")
-        ms = self.now_ms()
-        service = TokenService()
-        decrypted_data = {
-            "d0": "dqtgvuiv9b1jfidv7jd", "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-            "baiduid": "307A58497577DD668397B76535EBE245:FG=1", "platform": "MacIntel", "d23": 0, "hfe": "401_600_601", "d1": "104_106_103_107_101_105", "d2": 1, "d420": 0, "clientTs": self.now_ms(), "version": "1.4.0.3", "extra": "", "odkp": 0, "hf": "", "d78": 6365, "h0": False, "h1": 0
-        }
-        acs_token = service.generate_token(decrypted_data)
-        headers = {
-            "Acs-Token": acs_token, "Content-Type": "application/json", "Origin": "https://fanyi.baidu.com", "Referer": f"https://fanyi.baidu.com/mtpe-individual/transText?query={query}&lang={src}2{dst}", "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin", "accept": "text/event-stream",
-        }
-        self.session.cookies.set("ab_sr", self.ab_sr)
-        payload = {
-            "needNewlineCombine": False, "isAi": True, "sseStartTime": ms, "milliTimestamp": ms + 1, "query": query, "from": src, "to": dst, "corpusIds": [], "needPhonetic": True, "domain": "ai_advanced", "detectLang": "", "isIncognitoAI": True,
-        }
-        resp = self._request("POST", self.cfg.translate_url, headers=headers, json_body=payload)
-        return resp.text
-    
-    def run(self, query) -> str:
-        self.fetch_home()
-        self.abdr()
-        return self.translate(query)
+        with requests.Session() as session:
+            session.trust_env = False
+            if PROXY is not None:
+                session.proxies = {"http": PROXY, "https": PROXY}
+                session.verify = False
+
+            page_response = session.get(referer, timeout=PAGE_TIMEOUT)
+            page_response.raise_for_status()
+
+            cookies = session.cookies.get_dict()
+            if "BAIDUID" not in cookies:
+                raise RuntimeError("Page response did not set: BAIDUID")
+
+            client_ts = int(time.time() * 1000)
+            response = session.post(
+                API_URL,
+                headers={
+                    "accept": "text/event-stream",
+                    "content-type": "application/json",
+                    "acs-token": cls._acs_token(cookies["BAIDUID"], client_ts),
+                    "origin": "https://fanyi.baidu.com",
+                    "referer": referer,
+                },
+                json=cls._request_body(text, client_ts),
+                timeout=API_TIMEOUT,
+            )
+            response.raise_for_status()
+            return response.text
 
 # ==============================================================================
 #  Sublime Text Command
@@ -731,14 +511,7 @@ class BaiduTranslateRichCommand(sublime_plugin.TextCommand):
 
     def run_thread(self, query):
         try:
-            # 配置：注意 verify_tls=False 可能需要根据实际网络环境调整代理
-            cfg = FanYiConfig(
-                # proxies={"http": "http://127.0.0.1:8081", "https": "http://127.0.0.1:8081"}, # 如有需要请取消注释
-                verify_tls=False,
-                timeout=20,
-            )
-            fy = FanYi(cfg)
-            raw_output = fy.run(query)
+            raw_output = BaiduTranslator.translate(query)
             
             # 使用修改后的 HTML Parser
             parser = BaiduFullParser()
