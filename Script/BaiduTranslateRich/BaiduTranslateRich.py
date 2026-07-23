@@ -318,11 +318,11 @@ class BaiduTranslator:
     ACS_VERSION = "2.5.2.1"
 
     @classmethod
-    def _page_url(cls, text: str) -> str:
+    def _page_url(cls, text: str, source_language: str, target_language: str) -> str:
         params = urllib.parse.urlencode(
             {
                 "query": text,
-                "lang": f"{SOURCE_LANGUAGE}2{TARGET_LANGUAGE}",
+                "lang": f"{source_language}2{target_language}",
             }
         )
         return f"{PAGE_URL}?{params}"
@@ -429,15 +429,21 @@ class BaiduTranslator:
         return f"P1_{cls.ACS_BUILD_PREFIX}_{client_ts}_{payload}"
 
     @classmethod
-    def _request_body(cls, text: str, client_ts: int) -> Dict[str, Any]:
+    def _request_body(
+        cls,
+        text: str,
+        client_ts: int,
+        source_language: str,
+        target_language: str,
+    ) -> Dict[str, Any]:
         return {
             "needNewlineCombine": False,
             "disableCache": False,
             "isAi": True,
             "sseStartTime": client_ts,
             "query": text,
-            "from": SOURCE_LANGUAGE,
-            "to": TARGET_LANGUAGE,
+            "from": source_language,
+            "to": target_language,
             "corpusIds": [],
             "needPhonetic": True,
             "domain": "ai_advanced",
@@ -448,7 +454,13 @@ class BaiduTranslator:
 
     @classmethod
     def translate(cls, text: str) -> str:
-        referer = cls._page_url(text)
+        source_language = SOURCE_LANGUAGE
+        target_language = TARGET_LANGUAGE
+        if re.search(r"[\u4e00-\u9fff]", text):
+            source_language = "zh"
+            target_language = "en"
+
+        referer = cls._page_url(text, source_language, target_language)
 
         with requests.Session() as session:
             session.trust_env = False
@@ -473,7 +485,12 @@ class BaiduTranslator:
                     "origin": "https://fanyi.baidu.com",
                     "referer": referer,
                 },
-                json=cls._request_body(text, client_ts),
+                json=cls._request_body(
+                    text,
+                    client_ts,
+                    source_language,
+                    target_language,
+                ),
                 timeout=API_TIMEOUT,
             )
             response.raise_for_status()
