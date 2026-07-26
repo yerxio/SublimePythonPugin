@@ -202,8 +202,8 @@ class CurlToRequestsCommand(sublime_plugin.TextCommand):
             params_dict = {k: v[0] if len(v) == 1 else v for k, v in query_pairs.items()}
 
         proxy_code = 'proxies = {\n' \
-        +'   "http": "http://127.0.0.1:7890",\n' \
-        +'   "https": "http://127.0.0.1:7890"\n' \
+        +'    "http": "http://127.0.0.1:7890",\n' \
+        +'    "https": "http://127.0.0.1:7890"\n' \
         +'}\n'
 
         headers_code = f"headers = {json.dumps(headers, indent=4)}" if headers else ""
